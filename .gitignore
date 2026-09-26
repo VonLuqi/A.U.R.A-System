@@ -1,0 +1,56 @@
+﻿# Dependências
+/vendor
+/node_modules
+
+# Ambiente e segredos
+.env
+.env.backup
+.env.production
+.env.db.local
+.phpunit.result.cache
+Homestead.json
+Homestead.yaml
+auth.json
+
+# Laravel
+/public/hot
+/public/storage
+/storage/*.key
+/storage/pail
+/storage/app/private/*
+!/storage/app/private/.gitignore
+/storage/app/public/*
+!/storage/app/public/.gitignore
+/storage/framework/cache/data/*
+!/storage/framework/cache/data/.gitignore
+/storage/framework/sessions/*
+!/storage/framework/sessions/.gitignore
+/storage/framework/testing/*
+!/storage/framework/testing/.gitignore
+/storage/framework/views/*
+!/storage/framework/views/.gitignore
+/storage/logs/*
+!/storage/logs/.gitignore
+/bootstrap/cache/*.php
+!/bootstrap/cache/.gitignore
+
+# Uploads de extratos (nunca versionar)
+/storage/app/private/statements/*
+!/storage/app/private/statements/.gitignore
+
+# Build frontend
+/public/build
+/public/hot
+
+# IDE / OS
+/.idea
+/.vscode/*
+!/.vscode/settings.json
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Testes / cobertura
+/coverage
+.phpunit.cache
