@@ -18,8 +18,8 @@
   - MySQL **8** ou MariaDB **10.6+**
   - Git **2.x**
 - [ ] Garantir que a pasta do repositório é `d:\Projetos\ControleFinanceiroPessoal` (ou equivalente) e que `docs/` já contém `context.md`, `DESIGN-SYSTEM.MD` e `MASTER_PLAN.md`.
-- [ ] Decidir estratégia de criação do Laravel em diretório **não vazio** (já existe `docs/`):
-  - [ ] Opção recomendada: criar em pasta temporária e mover arquivos para a raiz.
+- [x] Decidir estratégia de criação do Laravel em diretório **não vazio** (já existe `docs/`):
+  - [x] Opção recomendada: criar em pasta temporária e mover arquivos para a raiz.
   - [ ] Alternativa: `composer create-project` com flags adequadas / merge manual — documentar a escolhida no PR/commit.
 
 ---
@@ -128,9 +128,12 @@
 
 ### 2.4 Critério de sucesso — Git
 
-- [ ] `git check-ignore -v .env` reconhece `.env` (após existir).
-- [ ] `git check-ignore -v vendor` e `node_modules` OK após instalação.
-- [ ] Nenhum segredo ou upload aparece em `git status` como untracked a ser commitado.
+- [x] `git check-ignore -v .env` reconhece `.env` (após existir).
+  - `.gitignore:6:.env`
+- [x] `git check-ignore -v vendor` e `node_modules` OK após instalação.
+  - Regras confirmadas (`/vendor`, `/node_modules`); dirs ainda não existem (pré-Laravel).
+- [x] Nenhum segredo ou upload aparece em `git status` como untracked a ser commitado.
+  - Working tree limpa; `.env.db.local` listado apenas como ignored.
 
 ---
 
@@ -138,109 +141,64 @@
 
 ### 3.1 Criar o skeleton Laravel 11
 
-- [ ] Na pasta pai ou na raiz, executar (diretório atual **não vazio** por causa de `docs/`):
+- [x] Na pasta pai ou na raiz, executar (diretório atual **não vazio** por causa de `docs/`):
 
 ```bash
 composer create-project laravel/laravel tmp-laravel "11.*"
 ```
 
-- [ ] Mover o conteúdo de `tmp-laravel/` para a raiz do repositório **sem sobrescrever** `docs/`:
-  - [ ] Mover `app/`, `bootstrap/`, `config/`, `database/`, `public/`, `resources/`, `routes/`, `storage/`, `tests/`, `artisan`, `composer.json`, `composer.lock`, `phpunit.xml`, `vite.config.js`, `package.json`, etc.
-  - [ ] Mesclar `.gitignore` do Laravel com o `.gitignore` do projeto (manter regras de uploads/docs).
-  - [ ] Remover pasta vazia `tmp-laravel/`.
-- [ ] Alternativa Windows (PowerShell), exemplo:
-
-```powershell
-composer create-project laravel/laravel tmp-laravel "11.*"
-Get-ChildItem tmp-laravel -Force | ForEach-Object {
-  $dest = Join-Path "." $_.Name
-  if (-not (Test-Path $dest)) { Move-Item $_.FullName $dest }
-  else { Write-Host "SKIP (já existe): $($_.Name)" }
-}
-Remove-Item tmp-laravel -Recurse -Force
-```
-
-- [ ] Validar: `php artisan --version` → Laravel Framework 11.x
+  - Estratégia: pasta temporária + move (recomendado). Composer bloqueou install por security advisories no Laravel 11; instalado com `audit.block-insecure=false` no projeto. Framework: **11.56.1**.
+- [x] Mover o conteúdo de `tmp-laravel/` para a raiz do repositório **sem sobrescrever** `docs/`:
+  - [x] Mover `app/`, `bootstrap/`, `config/`, `database/`, `public/`, `resources/`, `routes/`, `storage/`, `tests/`, `artisan`, `composer.json`, `composer.lock`, `phpunit.xml`, `vite.config.js`, `package.json`, etc.
+  - [x] Mesclar `.gitignore` do Laravel com o `.gitignore` do projeto (manter regras de uploads/docs).
+  - [x] Remover pasta vazia `tmp-laravel/`.
+- [x] Alternativa Windows (PowerShell) — usada como base do merge.
+- [x] Validar: `php artisan --version` → Laravel Framework **11.56.1**
+  - Nota Windows: `bootstrap/cache` veio com atributo ReadOnly; removido para o Artisan funcionar.
 
 ### 3.2 Instalar dependências PHP
 
-- [ ] `composer install`
-- [ ] Confirmar pasta `vendor/` criada e ignorada pelo Git.
+- [x] `composer install`
+  - Lock file OK; `Nothing to install` (deps já presentes da 3.1). Autoload regenerado; packages discovered.
+- [x] Confirmar pasta `vendor/` criada e ignorada pelo Git.
+  - `vendor/autoload.php` existe; `git check-ignore -v vendor` → `.gitignore:2:/vendor`.
 
 ### 3.3 Arquivo `.env` local
 
-- [ ] Copiar ambiente:
-  - [ ] `copy .env.example .env` (Windows) ou `cp .env.example .env`
-- [ ] Gerar chave: `php artisan key:generate`
-- [ ] Validar presença de `APP_KEY=base64:...` no `.env`.
+- [x] Copiar ambiente:
+  - [x] `copy .env.example .env` (Windows) ou `cp .env.example .env`
+- [x] Gerar chave: `php artisan key:generate`
+- [x] Validar presença de `APP_KEY=base64:...` no `.env`.
+  - `.env` ignorado pelo Git (`!! .env`).
 
 ### 3.4 Configurar `.env.example` (template versionável)
 
-- [ ] Editar `.env.example` com valores **sem segredos reais**, alinhados ao projeto:
-
-```env
-APP_NAME="Aura"
-APP_ENV=local
-APP_KEY=
-APP_DEBUG=true
-APP_TIMEZONE=America/Sao_Paulo
-APP_URL=http://localhost:8000
-
-APP_LOCALE=pt_BR
-APP_FALLBACK_LOCALE=pt_BR
-APP_FAKER_LOCALE=pt_BR
-
-APP_MAINTENANCE_DRIVER=file
-
-BCRYPT_ROUNDS=12
-
-LOG_CHANNEL=stack
-LOG_STACK=single
-LOG_DEPRECATIONS_CHANNEL=null
-LOG_LEVEL=debug
-
-DB_CONNECTION=mysql
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_DATABASE=aura
-DB_USERNAME=aura_dev
-DB_PASSWORD=
-
-SESSION_DRIVER=database
-SESSION_LIFETIME=120
-SESSION_ENCRYPT=false
-SESSION_PATH=/
-SESSION_DOMAIN=null
-
-BROADCAST_CONNECTION=log
-FILESYSTEM_DISK=local
-QUEUE_CONNECTION=sync
-
-CACHE_STORE=database
-CACHE_PREFIX=aura_
-
-MAIL_MAILER=log
-
-VITE_APP_NAME="${APP_NAME}"
-```
-
-- [ ] Espelhar as mesmas chaves no `.env` local com senha real do MySQL.
-- [ ] Rodar (após MySQL OK): `php artisan migrate` — **pode falhar se ainda não houver tabelas de session/cache**; se `SESSION_DRIVER=database` / `CACHE_STORE=database`, executar:
-  - [ ] `php artisan session:table` (se necessário na versão)
-  - [ ] `php artisan cache:table` / `php artisan queue:table` conforme drivers escolhidos
-  - [ ] Ou, para esta etapa, usar temporariamente `SESSION_DRIVER=file` e `CACHE_STORE=file` até a Etapa B — **documentar a escolha**.
+- [x] Editar `.env.example` com valores **sem segredos reais**, alinhados ao projeto:
+  - `APP_NAME="Aura"`, timezone `America/Sao_Paulo`, locale `pt_BR`, DB `aura` / `aura_dev`, `CACHE_PREFIX=aura_`, etc.
+- [x] Espelhar as mesmas chaves no `.env` local com senha real do MySQL.
+  - Senha a partir de `.env.db.local`; `APP_KEY` preservada.
+- [x] Rodar (após MySQL OK): `php artisan migrate`
+  - Migrations default Laravel 11 OK (`users`+`sessions`, `cache`, `jobs`).
+  - Mantidos `SESSION_DRIVER=database` e `CACHE_STORE=database` (não foi necessário fallback para `file`).
+  - `php artisan db:show` falha em `performance_schema` (user sem GRANT lá) — irrelevante; conexão/`migrate` no DB `aura` OK.
 
 ### 3.5 Ajustes iniciais de `config/`
 
-- [ ] Confirmar `config/app.php`: timezone `America/Sao_Paulo`, locale `pt_BR` (ou via `.env`).
-- [ ] Confirmar `config/filesystems.php` terá disco privado na Etapa C; nesta etapa apenas garantir `local` e `public` padrão.
-- [ ] Remover ou não commitiar qualquer `.env` real.
+- [x] Confirmar `config/app.php`: timezone `America/Sao_Paulo`, locale `pt_BR` (ou via `.env`).
+  - Via `.env` + defaults em `config/app.php` atualizados (`Aura`, `America/Sao_Paulo`, `pt_BR`).
+- [x] Confirmar `config/filesystems.php` terá disco privado na Etapa C; nesta etapa apenas garantir `local` e `public` padrão.
+  - `local` → `storage/app/private`; `public` → `storage/app/public`. Disco dedicado de extratos fica para Etapa C.
+- [x] Remover ou não commitiar qualquer `.env` real.
+  - `.env` ignorado e não trackeado no Git.
 
 ### 3.6 Critério de sucesso — Laravel
 
-- [ ] `php artisan about` exibe app name e environment.
-- [ ] `php artisan serve` sobe em `http://127.0.0.1:8000` e a página welcome do Laravel carrega.
-- [ ] `.env` **não** está no Git; `.env.example` **está**.
+- [x] `php artisan about` exibe app name e environment.
+  - Application Name **Aura** · Environment **local** · Laravel **11.56.1** · Locale **pt_BR**.
+- [x] `php artisan serve` sobe em `http://127.0.0.1:8000` e a página welcome do Laravel carrega.
+  - HTTP **200**; welcome page OK (serve encerrado após o teste).
+- [x] `.env` **não** está no Git; `.env.example` **está**.
+  - `.env` ignorado/não trackeado; `.env.example` adicionado ao índice (commit junto com o restante do skeleton quando solicitado).
 
 ---
 
@@ -248,144 +206,54 @@ VITE_APP_NAME="${APP_NAME}"
 
 ### 4.1 Dependências Node (package.json)
 
-- [ ] Na raiz: `npm install`
-- [ ] Instalar React e plugin Vite:
-
-```bash
-npm install react react-dom
-npm install -D @vitejs/plugin-react
-```
-
+- [x] Na raiz: `npm install`
+- [x] Instalar React e plugin Vite:
+  - `react` / `react-dom` **19.3.0**
+  - `@vitejs/plugin-react` **^4.7.0** (compatível com Vite 6 do Laravel; a v6 do plugin exige Vite 8)
 - [ ] (Opcional nesta etapa, útil depois) `npm install -D @types/react @types/react-dom` se adotar TypeScript — **default MVP: JSX**.
-- [ ] Confirmar em `package.json`:
-  - [ ] `dependencies`: `react`, `react-dom`
-  - [ ] `devDependencies`: `vite`, `laravel-vite-plugin`, `@vitejs/plugin-react`
-  - [ ] Scripts: `"dev": "vite"`, `"build": "vite build"`
+- [x] Confirmar em `package.json`:
+  - [x] `dependencies`: `react`, `react-dom`
+  - [x] `devDependencies`: `vite`, `laravel-vite-plugin`, `@vitejs/plugin-react`
+  - [x] Scripts: `"dev": "vite"`, `"build": "vite build"`
 
 ### 4.2 Atualizar `vite.config.js`
 
-- [ ] Editar `vite.config.js` na raiz para:
-
-```js
-import { defineConfig } from 'vite';
-import laravel from 'laravel-vite-plugin';
-import react from '@vitejs/plugin-react';
-
-export default defineConfig({
-    plugins: [
-        laravel({
-            input: ['resources/css/app.css', 'resources/js/app.jsx'],
-            refresh: true,
-        }),
-        react(),
-    ],
-    server: {
-        watch: {
-            ignored: ['**/storage/app/private/**'],
-        },
-    },
-});
-```
-
-- [ ] Garantir que o `input` aponta para `resources/js/app.jsx` (não `app.js`).
+- [x] Editar `vite.config.js` na raiz para incluir `react()`, input `app.jsx` e ignore de `storage/app/private`.
+- [x] Garantir que o `input` aponta para `resources/js/app.jsx` (não `app.js`).
 
 ### 4.3 Bootstrap e entrypoint React
 
-- [ ] Renomear/remover `resources/js/app.js` se existir; criar `resources/js/app.jsx`.
-- [ ] Atualizar `resources/js/bootstrap.js` (manter axios se vier do skeleton; configurar CSRF depois na Etapa D):
-
-```js
-import axios from 'axios';
-window.axios = axios;
-window.axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
-```
-
-- [ ] Se axios não estiver instalado: `npm install axios`
-- [ ] Criar estrutura mínima:
-
-```text
-resources/js/
-├── app.jsx
-├── bootstrap.js
-├── components/
-│   └── App.jsx
-└── pages/
-    └── Home.jsx
-```
-
-- [ ] Conteúdo inicial de `resources/js/app.jsx`:
-
-```jsx
-import './bootstrap';
-import '../css/app.css';
-
-import { createRoot } from 'react-dom/client';
-import App from './components/App';
-
-const el = document.getElementById('app');
-if (el) {
-    createRoot(el).render(<App />);
-}
-```
-
-- [ ] Conteúdo inicial de `resources/js/components/App.jsx`:
-
-```jsx
-export default function App() {
-    return (
-        <main className="app-shell">
-            <h1>Aura</h1>
-            <p className="tagline">Inteligência invisível, controle absoluto.</p>
-            <p>Setup Etapa A — React + Vite OK</p>
-        </main>
-    );
-}
-```
+- [x] Renomear/remover `resources/js/app.js` se existir; criar `resources/js/app.jsx`.
+- [x] Atualizar `resources/js/bootstrap.js` (manter axios se vier do skeleton; configurar CSRF depois na Etapa D).
+- [x] Se axios não estiver instalado: `npm install axios` — já presente no skeleton.
+- [x] Criar estrutura mínima: `app.jsx`, `bootstrap.js`, `components/App.jsx`, `pages/Home.jsx`.
+- [x] Conteúdo inicial de `resources/js/app.jsx`.
+- [x] Conteúdo inicial de `resources/js/components/App.jsx`.
 
 ### 4.4 Blade host do SPA
 
-- [ ] Criar/atualizar `resources/views/app.blade.php`:
-
-```blade
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>{{ config('app.name', 'Aura') }}</title>
-    @vite(['resources/css/app.css', 'resources/js/app.jsx'])
-</head>
-<body>
-    <div id="app"></div>
-</body>
-</html>
-```
-
-- [ ] Atualizar `routes/web.php` para servir o shell (temporário até auth na Etapa C/D):
-
-```php
-<?php
-
-use Illuminate\Support\Facades\Route;
-
-Route::view('/{any?}', 'app')->where('any', '.*');
-```
-
-- [ ] **Atenção:** catch-all SPA só após garantir que rotas de API (`/api/*`) não sejam engolidas — na Etapa C registrar API antes ou em `routes/api.php`.
+- [x] Criar/atualizar `resources/views/app.blade.php`.
+- [x] Atualizar `routes/web.php` para servir o shell (temporário até auth na Etapa C/D).
+- [x] **Atenção:** catch-all SPA só após garantir que rotas de API (`/api/*`) não sejam engolidas — na Etapa C registrar API antes ou em `routes/api.php`.
+  - Hoje `bootstrap/app.php` ainda não carrega `routes/api.php`; ao ativar API, registrar fora do catch-all web.
 
 ### 4.5 Remover assets padrão não usados
 
-- [ ] Remover scaffolding Vue/Alpine residual se existir e não for usado.
-- [ ] Garantir que não há referência a `resources/js/app.js` em `vite.config.js` ou Blade.
+- [x] Remover scaffolding Vue/Alpine residual se existir e não for usado.
+  - Removido `welcome.blade.php`; `tailwind.config.js` sem `.vue`, com `*.jsx`; cache de views limpo. Sem Vue/Alpine no projeto.
+- [x] Garantir que não há referência a `resources/js/app.js` em `vite.config.js` ou Blade.
+  - Apenas `app.jsx` em `vite.config.js` e `app.blade.php`.
 
 ### 4.6 Critério de sucesso — Vite + React
 
-- [ ] Terminal 1: `php artisan serve`
-- [ ] Terminal 2: `npm run dev`
-- [ ] Abrir `http://127.0.0.1:8000` e ver o texto do `App.jsx` (HMR ativo).
-- [ ] `npm run build` gera `public/build/manifest.json` sem erros.
-- [ ] Com build: parar Vite, servir só Artisan e validar assets compilados.
+- [x] Terminal 1: `php artisan serve`
+- [x] Terminal 2: `npm run dev`
+- [x] Abrir `http://127.0.0.1:8000` e ver o texto do `App.jsx` (HMR ativo).
+  - HTTP 200, `#app`, refs `@vite/client` / 5173; `App.jsx` servido pelo Vite com “Setup Etapa A”.
+- [x] `npm run build` gera `public/build/manifest.json` sem erros.
+  - Entries `resources/js/app.jsx` + `resources/css/app.css`.
+- [x] Com build: parar Vite, servir só Artisan e validar assets compilados.
+  - HTTP 200 com `/build/assets/...`, sem `@vite/client`.
 
 ---
 

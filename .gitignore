@@ -7,10 +7,14 @@
 .env.backup
 .env.production
 .env.db.local
+.env.db.hostgator.local
+.env.ftp.hostgator.local
 .phpunit.result.cache
+.phpactor.json
 Homestead.json
 Homestead.yaml
 auth.json
+/auth.json
 
 # Laravel
 /public/hot
@@ -41,11 +45,16 @@ auth.json
 # Build frontend
 /public/build
 /public/hot
+npm-debug.log
+yarn-error.log
 
 # IDE / OS
 /.idea
 /.vscode/*
 !/.vscode/settings.json
+/.fleet
+/.nova
+/.zed
 .DS_Store
 Thumbs.db
 *.swp
@@ -54,3 +63,4 @@ Thumbs.db
 # Testes / cobertura
 /coverage
 .phpunit.cache
+/.phpunit.cache
