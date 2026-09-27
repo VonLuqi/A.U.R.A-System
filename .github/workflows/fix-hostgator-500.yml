@@ -1,0 +1,131 @@
+name: Fix HostGator 500
+
+# Limpa caches quebrados (route:cache), ajusta permissões storage e testa /.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Install tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lftp curl python3
+
+      - name: Fix permissions + clear caches + test home
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_SERVER_DIR: ${{ secrets.FTP_SERVER_DIR }}
+        run: |
+          set -euo pipefail
+          TOKEN=$(openssl rand -hex 32)
+          export TOKEN
+          DIR="${FTP_SERVER_DIR%/}"
+
+          python3 <<'PY'
+          import os
+          from pathlib import Path
+          token = os.environ["TOKEN"]
+          php = r'''<?php
+          declare(strict_types=1);
+          error_reporting(E_ALL);
+          ini_set('display_errors', '1');
+          header('Content-Type: text/plain; charset=UTF-8');
+          $expected = '__TOKEN__';
+          if (!hash_equals($expected, (string)($_GET['token'] ?? ''))) { http_response_code(403); echo "Forbidden\n"; exit; }
+          $root = dirname(__DIR__);
+          echo "root=$root\n";
+
+          $paths = [
+            $root.'/storage',
+            $root.'/storage/app',
+            $root.'/storage/framework',
+            $root.'/storage/framework/cache',
+            $root.'/storage/framework/cache/data',
+            $root.'/storage/framework/sessions',
+            $root.'/storage/framework/views',
+            $root.'/storage/logs',
+            $root.'/bootstrap/cache',
+          ];
+          foreach ($paths as $p) {
+            if (!is_dir($p)) { @mkdir($p, 0775, true); }
+            @chmod($p, 0775);
+          }
+          echo "perms_ok\n";
+
+          foreach (glob($root.'/bootstrap/cache/*.php') ?: [] as $f) {
+            @unlink($f);
+            echo "deleted ".basename($f)."\n";
+          }
+
+          try {
+            require $root.'/vendor/autoload.php';
+            $app = require $root.'/bootstrap/app.php';
+            $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
+            $kernel->bootstrap();
+            Illuminate\Support\Facades\Artisan::call('optimize:clear');
+            echo Illuminate\Support\Facades\Artisan::output();
+            echo "optimize:clear OK\n";
+
+            $http = $app->make(Illuminate\Contracts\Http\Kernel::class);
+            $res = $http->handle(Illuminate\Http\Request::create('/', 'GET'));
+            echo "home_status=".$res->getStatusCode()."\n";
+            if ($res->getStatusCode() >= 400) {
+              $log = $root.'/storage/logs/laravel.log';
+              if (is_file($log)) {
+                echo "log_tail=\n".substr((string)file_get_contents($log), -2000)."\n";
+              }
+              echo "body_snip=".substr(preg_replace('/\s+/', ' ', strip_tags((string)$res->getContent())), 0, 500)."\n";
+              throw new RuntimeException('home still '.$res->getStatusCode());
+            }
+            echo "HOME_OK\n";
+            echo "FIX_OK\n";
+          } catch (Throwable $e) {
+            echo "ERROR: ".$e->getMessage()."\n";
+            echo $e->getFile().":".$e->getLine()."\n";
+            $log = $root.'/storage/logs/laravel.log';
+            if (is_file($log)) {
+              echo "log_tail=\n".substr((string)file_get_contents($log), -2000)."\n";
+            }
+          }
+          @unlink(__FILE__);
+          '''
+          php = php.replace('__TOKEN__', token)
+          out = []
+          for line in php.splitlines(True):
+              out.append(line[2:] if line.startswith('  ') else line)
+          Path('__fix_once.php').write_text(''.join(out), encoding='utf-8', newline='\n')
+          PY
+
+          lftp -c "
+            set ftp:ssl-allow no;
+            set net:timeout 60;
+            open -u ${FTP_USERNAME},${FTP_PASSWORD} ${FTP_SERVER};
+            cd ${DIR}/public;
+            put __fix_once.php;
+            bye
+          "
+
+          RESP=$(mktemp)
+          CODE=$(curl -sS -L --max-time 120 -o "$RESP" -w "%{http_code}" \
+            "https://aura.vonluqi.com/__fix_once.php?token=${TOKEN}" || echo 000)
+          echo "HTTP_CODE=$CODE"
+          echo "----- BODY -----"
+          cat "$RESP"
+          echo ""
+          echo "----- END -----"
+
+          lftp -c "
+            set ftp:ssl-allow no;
+            open -u ${FTP_USERNAME},${FTP_PASSWORD} ${FTP_SERVER};
+            cd ${DIR}/public;
+            rm -f __fix_once.php;
+            bye
+          " || true
+          rm -f __fix_once.php
+
+          grep -q FIX_OK "$RESP"
+         
