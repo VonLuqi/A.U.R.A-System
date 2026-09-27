@@ -12,7 +12,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -41,7 +41,10 @@ jobs:
       - name: Build frontend
         run: npm run build
 
-      - name: Deploy via FTP
+      - name: Pack vendor (single archive — FTP file-by-file is too slow)
+        run: tar -czf vendor.tar.gz vendor
+
+      - name: Deploy app via FTP (without vendor/)
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_SERVER }}
@@ -52,6 +55,7 @@ jobs:
           local-dir: ./
           server-dir: ${{ secrets.FTP_SERVER_DIR }}
           dangerous-clean-slate: false
+          timeout: 600000
           exclude: |
             **/.git*
             **/.git*/**
@@ -61,6 +65,8 @@ jobs:
             **/.env.db.*
             **/.env.ftp.*
             **/node_modules/**
+            **/vendor/**
+            **/vendor.tar.gz
             **/tests/**
             **/.vscode/**
             **/docs/**
@@ -75,3 +81,39 @@ jobs:
             **/storage/app/private/statements/**
             **/.DS_Store
             **/Thumbs.db
+
+      - name: Upload vendor.tar.gz via FTP
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_SERVER_DIR: ${{ secrets.FTP_SERVER_DIR }}
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lftp
+          DIR="${FTP_SERVER_DIR%/}"
+          lftp -c "
+            set ftp:ssl-allow no;
+            set net:timeout 60;
+            set net:max-retries 3;
+            open -u ${FTP_USERNAME},${FTP_PASSWORD} ${FTP_SERVER};
+            cd ${DIR};
+            put vendor.tar.gz;
+            bye
+          "
+
+      - name: Extract vendor on server (SSH)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          port: 22
+          command_timeout: 20m
+          script: |
+            set -e
+            cd ~/aura || cd /home4/luca9682/aura
+            tar -xzf vendor.tar.gz
+            rm -f vendor.tar.gz
+            php artisan --version || true
+            echo "Vendor extracted OK"
