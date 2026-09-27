@@ -1,0 +1,44 @@
+:root {
+  /* Color */
+  --color-brand-primary: #DCCFFF;
+  --color-bg-default: #151716;
+  --color-surface-default: #1C1E1D;
+  --color-surface-raised: #2C2E2D;
+  --color-surface-sunken: #101211;
+  --color-border-subtle: #2A2C2B;
+  --color-border-default: #3A3C3B;
+  --color-text-primary: #FCFDFC;
+  --color-text-secondary: #9A9C9B;
+  --color-text-muted: #6E706F;
+  --color-text-on-brand: #151716;
+  --color-interactive-dark: #0A0B0A;
+  --color-brand-muted: rgba(220, 207, 255, 0.35);
+  --color-feedback-positive: #A8E6C3;
+
+  /* Typography */
+  --font-sans: "Poppins", system-ui, sans-serif;
+  --text-display: 2.25rem;
+  --text-h1: 1.75rem;
+  --text-h2: 1.375rem;
+  --text-h3: 1.125rem;
+  --text-body: 0.875rem;
+  --text-caption: 0.75rem;
+  --text-small: 0.6875rem;
+
+  /* Shape */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-2xl: 32px;
+  --radius-full: 9999px;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+}

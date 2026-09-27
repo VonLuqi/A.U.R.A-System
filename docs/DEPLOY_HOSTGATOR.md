@@ -9,9 +9,11 @@
 | `FTP_PASSWORD` | senha do cPanel |
 | `FTP_SERVER_DIR` | `aura/` |
 
-## Subdomínio (recomendado)
+## Subdomínio (Cenário A — Em uso)
 
 - `aura.vonluqi.com` → Document Root = `/home4/luca9682/aura/public`
+- Laravel em `/home4/luca9682/aura` (`.env`, `vendor/`, `app/` **fora** do web root)
+- Domínio principal `vonluqi.com` permanece em `/public_html` (fixado pela HostGator)
 
 ## Como o deploy funciona
 

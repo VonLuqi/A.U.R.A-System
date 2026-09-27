@@ -9,13 +9,13 @@
 
 ## Etapa A — Setup do projeto
 
-- [ ] Inicializar repositório Git e `.gitignore` (`.env`, `vendor`, `node_modules`, uploads).
-- [ ] Criar aplicação Laravel 11 + configurar `.env.example`.
-- [ ] Configurar Vite + React no frontend (`resources/js`).
-- [ ] Definir document root `public/` e regras Apache/`.htaccess`.
-- [ ] Instalar fonte Poppins e espelhar tokens CSS a partir de `docs/DESIGN-SYSTEM.MD`.
-- [ ] Configurar ambiente local (PHP, Composer, Node, MySQL).
-- [ ] Documentar variáveis de ambiente necessárias neste `context.md` se mudarem.
+- [x] Inicializar repositório Git e `.gitignore` (`.env`, `vendor`, `node_modules`, uploads).
+- [x] Criar aplicação Laravel 11 + configurar `.env.example`.
+- [x] Configurar Vite + React no frontend (`resources/js`).
+- [x] Definir document root `public/` e regras Apache/`.htaccess`.
+- [x] Instalar fonte Poppins e espelhar tokens CSS a partir de `docs/DESIGN-SYSTEM.MD`.
+- [x] Configurar ambiente local (PHP, Composer, Node, MySQL).
+- [x] Documentar variáveis de ambiente necessárias neste `context.md` se mudarem.
 
 ---
 

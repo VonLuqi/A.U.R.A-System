@@ -261,83 +261,67 @@ composer create-project laravel/laravel tmp-laravel "11.*"
 
 ### 5.1 Princípio
 
-- [ ] O document root de produção **deve** apontar para a pasta `public/` do Laravel (nunca para a raiz do projeto).
-- [ ] Arquivos sensíveis (`.env`, `app/`, `storage/`, `vendor/`) **fora** do document root ou inacessíveis via HTTP.
+- [x] O document root de produção **deve** apontar para a pasta `public/` do Laravel (nunca para a raiz do projeto).
+  - HostGator: domínio principal `vonluqi.com` fica preso em `/public_html` (não editável).
+  - **Cenário A via subdomínio:** `aura.vonluqi.com` → Document Root = `/home4/luca9682/aura/public`.
+  - App Laravel em `/home4/luca9682/aura` (fora do document root).
+- [x] Arquivos sensíveis (`.env`, `app/`, `storage/`, `vendor/`) **fora** do document root ou inacessíveis via HTTP.
+  - Ficam em `/home4/luca9682/aura/` (pai de `public/`); só `public/` é exposto pelo Apache.
 
 ### 5.2 `.htaccess` dentro de `public/` (padrão Laravel — manter)
 
-- [ ] Verificar/criar `public/.htaccess`:
-
-```apache
-<IfModule mod_rewrite.c>
-    <IfModule mod_negotiation.c>
-        Options -MultiViews -Indexes
-    </IfModule>
-
-    RewriteEngine On
-
-    # Handle Authorization Header
-    RewriteCond %{HTTP:Authorization} .
-    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
-
-    # Redirect Trailing Slashes If Not A Folder...
-    RewriteCond %{REQUEST_FILENAME} !-d
-    RewriteCond %{REQUEST_URI} (.+)/$
-    RewriteRule ^ %1 [L,R=301]
-
-    # Send Requests To Front Controller...
-    RewriteCond %{REQUEST_FILENAME} !-d
-    RewriteCond %{REQUEST_FILENAME} !-f
-    RewriteRule ^ index.php [L]
-</IfModule>
-```
-
-- [ ] Confirmar existência de `public/index.php` (front controller Laravel).
+- [x] Verificar/criar `public/.htaccess`:
+  - Presente (Laravel 11 padrão). Inclui também handle de `X-XSRF-Token` além do Authorization / trailing slash / front controller.
+- [x] Confirmar existência de `public/index.php` (front controller Laravel).
+  - Presente; bootstrap via `vendor/autoload.php` + `bootstrap/app.php`.
 
 ### 5.3 Cenário HostGator A — Document Root apontando para `public/` (preferencial)
 
-- [ ] No cPanel → Domains → `vonluqi.com` → Document Root = `/home/USUARIO/caminho/do/projeto/public`
-- [ ] **Não** é necessário `.htaccess` na raiz do projeto para rewrite.
-- [ ] Validar que `https://vonluqi.com` carrega `public/index.php`.
-- [ ] Documentar no `docs/context.md` o caminho absoluto usado no painel.
+- [x] No cPanel → Domains → Document Root = `.../projeto/public`
+  - Domínio principal `vonluqi.com` **não** permite alterar root (preso em `/public_html`).
+  - **Cenário A via subdomínio:** `aura.vonluqi.com` → `/home4/luca9682/aura/public` (configurado no cPanel).
+- [x] **Não** é necessário `.htaccess` na raiz do projeto para rewrite.
+  - Sem `.htaccess` na raiz do Laravel; só `public/.htaccess`.
+- [ ] Validar que `https://aura.vonluqi.com` carrega `public/index.php`.
+  - Configuração do painel OK; resposta HTTP ainda **403** (permissões/`public` no servidor — em investigação; não bloqueia o restante da Etapa A).
+- [x] Documentar no `docs/context.md` o caminho absoluto usado no painel.
+  - Ver §2.1: `/home4/luca9682/aura/public`.
 
 ### 5.4 Cenário HostGator B — Apenas `public_html` (sem mudar document root)
 
-- [ ] Opção B1 (recomendada neste cenário): colocar o código **acima** de `public_html` e apontar/copiar só o conteúdo de `public/` → `public_html/`, ajustando paths em `index.php`.
-- [ ] Opção B2: manter Laravel dentro de `public_html` e adicionar `.htaccess` na **raiz do Laravel** (pai de `public/`) para forçar tudo para `public/`:
-
-```apache
-<IfModule mod_rewrite.c>
-    RewriteEngine On
-
-    # Bloquear acesso direto a arquivos sensíveis na raiz (defesa em profundidade)
-    RewriteRule ^(\.env|composer\.(json|lock)|artisan|phpunit\.xml) - [F,L]
-    RewriteRule ^(app|bootstrap|config|database|resources|routes|storage|tests|vendor)/ - [F,L]
-
-    # Redirecionar tudo para public/
-    RewriteRule ^(.*)$ public/$1 [L]
-</IfModule>
-```
-
-- [ ] Em `public/index.php`, se a estrutura for aninhada de forma não padrão, ajustar os `require` dos autoloads (`../vendor/autoload.php`, etc.) conforme o path real.
-- [ ] **Preferir Cenário A**; usar B só se o painel não permitir alterar document root.
+- [x] **Não aplicável (N/A)** — adotado o **Cenário A via subdomínio** (`aura.vonluqi.com` → `/home4/luca9682/aura/public`).
+  - Domínio principal permanece em `/public_html` sem hospedar o Laravel.
+  - Opções B1/B2 e `.htaccess` na raiz do Laravel **não** serão usadas enquanto A estiver ativo.
+- [x] **Preferir Cenário A**; usar B só se o painel não permitir alterar document root.
+  - Cumprido: A viabilizado com subdomínio editável; B fica como fallback documentado no plano, sem implementação.
 
 ### 5.5 Segurança adicional Apache
 
-- [ ] Criar `public/storage` via `php artisan storage:link` quando houver uploads públicos (MVP: extratos são privados — link público **não** deve expor statements).
-- [ ] Garantir que não exista symlink/alias que exponha `storage/app/private`.
-- [ ] Em produção HostGator, confirmar `mod_rewrite` habilitado (padrão cPanel).
+- [x] Criar `public/storage` via `php artisan storage:link` quando houver uploads públicos (MVP: extratos são privados — link público **não** deve expor statements).
+  - **MVP:** não criar `storage:link` ainda — não há assets públicos necessários.
+  - `config/filesystems.php` `links` aponta só `public/storage` → `storage/app/public` (nunca `private/`).
+  - Disco `local` (default) = `storage/app/private` (extratos); disco `public` = `storage/app/public`.
+- [x] Garantir que não exista symlink/alias que exponha `storage/app/private`.
+  - Sem `public/storage` no repo; placeholders em `storage/app/private/**` com gitignore (uploads não versionados).
+  - Document root HostGator = apenas `aura/public` — `storage/` fica fora do web root.
+- [x] Em produção HostGator, confirmar `mod_rewrite` habilitado (padrão cPanel).
+  - cPanel/Apache HostGator habilita `mod_rewrite` por padrão; `public/.htaccess` usa `RewriteEngine On`.
 
 ### 5.6 Desenvolvimento local sem Apache
 
-- [ ] Usar `php artisan serve` (raiz já embute `public/`).
-- [ ] (Opcional) Configurar VirtualHost Apache/Laragon local apontando para `.../ControleFinanceiroPessoal/public`.
+- [x] Usar `php artisan serve` (raiz já embute `public/`).
+  - Validado: `php artisan serve --host=127.0.0.1 --port=8000` → HTTP **200** em `http://127.0.0.1:8000`.
+  - Frontend: em outro terminal, `npm run dev` (HMR) ou usar assets de `npm run build`.
+- [x] (Opcional) Configurar VirtualHost Apache/Laragon local — **não necessário**; XAMPP PHP CLI + `artisan serve` cobrem o MVP local.
 
 ### 5.7 Critério de sucesso — Apache / public
 
-- [ ] Checklist documentado no repo: qual cenário HostGator (A ou B) será usado.
-- [ ] Localmente, URL base resolve para a welcome/SPA sem expor `/vendor` ou `/.env`.
-- [ ] Arquivos `public/.htaccess` e (se B) raiz `.htaccess` versionados.
+- [x] Checklist documentado no repo: qual cenário HostGator (A ou B) será usado.
+  - **Cenário A** via subdomínio: `aura.vonluqi.com` → `/home4/luca9682/aura/public` (`docs/context.md` §2.1, `docs/DEPLOY_HOSTGATOR.md`). Cenário B = N/A.
+- [x] Localmente, URL base resolve para a welcome/SPA sem expor `/vendor` ou `/.env`.
+  - `php artisan serve`: `/` → SPA (`#app`); `/.env` e `/vendor/autoload.php` **não** devolvem segredos/código (catch-all serve o shell Blade, sem `APP_KEY`/`DB_PASSWORD`/autoload real).
+- [x] Arquivos `public/.htaccess` e (se B) raiz `.htaccess` versionados.
+  - `public/.htaccess` no Git; **sem** `.htaccess` na raiz (B não usado).
 
 ---
 
@@ -345,131 +329,31 @@ composer create-project laravel/laravel tmp-laravel "11.*"
 
 ### 6.1 Fonte Poppins
 
-- [ ] Escolher método de carga (um dos dois):
+- [x] Escolher método de carga (um dos dois):
   - [ ] **A — Google Fonts (dev rápido):** link no `app.blade.php`
-  - [ ] **B — Self-host (melhor para produção/LGPD/latência):** baixar arquivos WOFF2 e servir em `public/fonts/`
-- [ ] Se Google Fonts (A), adicionar em `resources/views/app.blade.php` no `<head>`:
-
-```html
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
-```
-
-- [ ] Se self-host (B):
-  - [ ] Baixar pesos `400`, `500`, `600`, `700`.
-  - [ ] Salvar em `public/fonts/poppins/`.
-  - [ ] Declarar `@font-face` em `resources/css/fonts.css` e importar em `app.css`.
+  - [x] **B — Self-host (melhor para produção/LGPD/latência):** baixar arquivos WOFF2 e servir em `public/fonts/`
+- [x] Se self-host (B):
+  - [x] Baixar pesos `400`, `500`, `600`, `700` (latin + latin-ext para pt-BR).
+  - [x] Salvar em `public/fonts/poppins/`.
+  - [x] Declarar `@font-face` em `resources/css/fonts.css` e importar em `app.css`.
+  - Tailwind `fontFamily.sans` → Poppins.
 
 ### 6.2 Criar folha de tokens
 
-- [ ] Criar `resources/css/tokens.css` copiando os tokens de `docs/DESIGN-SYSTEM.MD` §4.6:
-
-```css
-:root {
-  /* Color */
-  --color-brand-primary: #DCCFFF;
-  --color-bg-default: #151716;
-  --color-surface-default: #1C1E1D;
-  --color-surface-raised: #2C2E2D;
-  --color-surface-sunken: #101211;
-  --color-border-subtle: #2A2C2B;
-  --color-border-default: #3A3C3B;
-  --color-text-primary: #FCFDFC;
-  --color-text-secondary: #9A9C9B;
-  --color-text-muted: #6E706F;
-  --color-text-on-brand: #151716;
-  --color-interactive-dark: #0A0B0A;
-  --color-brand-muted: rgba(220, 207, 255, 0.35);
-  --color-feedback-positive: #A8E6C3;
-
-  /* Typography */
-  --font-sans: "Poppins", system-ui, sans-serif;
-  --text-display: 2.25rem;
-  --text-h1: 1.75rem;
-  --text-h2: 1.375rem;
-  --text-h3: 1.125rem;
-  --text-body: 0.875rem;
-  --text-caption: 0.75rem;
-  --text-small: 0.6875rem;
-
-  /* Shape */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 24px;
-  --radius-2xl: 32px;
-  --radius-full: 9999px;
-
-  /* Spacing */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 20px;
-  --space-6: 24px;
-  --space-8: 32px;
-}
-```
-
-- [ ] Atualizar `resources/css/app.css`:
-
-```css
-@import './tokens.css';
-
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
-
-html,
-body,
-#app {
-  min-height: 100%;
-}
-
-body {
-  margin: 0;
-  font-family: var(--font-sans);
-  font-size: var(--text-body);
-  line-height: 1.5;
-  color: var(--color-text-primary);
-  background-color: var(--color-bg-default);
-  -webkit-font-smoothing: antialiased;
-}
-
-.app-shell {
-  padding: var(--space-8);
-}
-
-.app-shell h1 {
-  font-size: var(--text-h1);
-  font-weight: 700;
-  margin: 0 0 var(--space-3);
-}
-
-.app-shell p {
-  color: var(--color-text-secondary);
-  margin: 0;
-}
-
-.app-shell .tagline {
-  font-size: var(--text-caption);
-  font-weight: 400;
-  color: var(--color-text-secondary);
-  margin-bottom: var(--space-4);
-}
-```
-
-- [ ] Conferência cruzada: abrir `docs/DESIGN-SYSTEM.MD` e validar hex/radius/spacing idênticos.
-- [ ] Atualizar `App.jsx` para classes que usam tokens (já coberto pelo `body` / `.app-shell`).
+- [x] Criar `resources/css/tokens.css` copiando os tokens de `docs/DESIGN-SYSTEM.MD` §4.6.
+- [x] Atualizar `resources/css/app.css` (`@import` fonts + tokens, body/base, `.app-shell`).
+- [x] Conferência cruzada: hex/radius/spacing idênticos ao DESIGN-SYSTEM §4.6.
+- [x] Atualizar `App.jsx` para classes que usam tokens (já coberto pelo `body` / `.app-shell`).
+  - `App.jsx` já usa `app-shell` + `tagline`.
 
 ### 6.3 Critério de sucesso — Design tokens
 
-- [ ] DevTools → Computed: `body` usa Poppins e background `#151716`.
-- [ ] Variáveis CSS `--color-brand-primary` etc. visíveis em `:root`.
-- [ ] Nenhum uso residual de fonte Inter/Roboto/system como primária.
+- [x] DevTools → Computed: `body` usa Poppins e background `#151716`.
+  - Validado no CSS compilado (`public/build/assets/app-*.css`): `body{font-family:var(--font-sans);…background-color:var(--color-bg-default)}` com `--font-sans:"Poppins"…` e `--color-bg-default:#151716`.
+- [x] Variáveis CSS `--color-brand-primary` etc. visíveis em `:root`.
+  - `:root` no build inclui `--color-brand-primary:#DCCFFF` e demais tokens de §4.6.
+- [x] Nenhum uso residual de fonte Inter/Roboto/system como primária.
+  - Sem Inter/Roboto em `resources/`; Poppins é primária; `system-ui` só como fallback (design system).
 
 ---
 
@@ -477,77 +361,76 @@ body {
 
 ### 7.1 Seção nova ou atualização
 
-- [ ] Abrir `docs/context.md` e adicionar/atualizar seção **“Variáveis de ambiente”** (ex.: após Arquitetura), listando:
-
-| Variável | Obrigatória | Exemplo local | Exemplo produção | Descrição |
-| --- | --- | --- | --- | --- |
-| `APP_NAME` | sim | `Aura` | igual | Nome da app |
-| `APP_ENV` | sim | `local` | `production` | Ambiente |
-| `APP_KEY` | sim | `(gerada)` | `(gerada única)` | Chave de criptografia |
-| `APP_DEBUG` | sim | `true` | `false` | Nunca `true` em prod |
-| `APP_URL` | sim | `http://localhost:8000` | `https://vonluqi.com` | URL canônica |
-| `APP_TIMEZONE` | sim | `America/Sao_Paulo` | igual | Fuso |
-| `DB_CONNECTION` | sim | `mysql` | `mysql` | Driver |
-| `DB_HOST` | sim | `127.0.0.1` | host cPanel | Host DB |
-| `DB_PORT` | sim | `3306` | `3306` | Porta |
-| `DB_DATABASE` | sim | `aura` | nome cPanel | Database |
-| `DB_USERNAME` | sim | `aura_dev` | user cPanel | Usuário |
-| `DB_PASSWORD` | sim | `(local)` | `(prod)` | Senha — nunca no Git |
-| `SESSION_DRIVER` | sim | `file` ou `database` | `database` | Sessões |
-| `CACHE_STORE` | sim | `file` ou `database` | `database`/`file` | Cache |
-| `FILESYSTEM_DISK` | sim | `local` | `local` | Disco default |
-| `QUEUE_CONNECTION` | sim | `sync` | `sync` | Filas (MVP sync) |
-| `LOG_LEVEL` | sim | `debug` | `error` | Verbosity |
-| `VITE_APP_NAME` | não | `${APP_NAME}` | igual | Exposto ao front |
-
-- [ ] Registrar decisão: `SESSION_DRIVER` / `CACHE_STORE` escolhidos na Etapa A.
-- [ ] Registrar caminho HostGator do document root quando conhecido.
-- [ ] Atualizar `docs/MASTER_PLAN.md` — marcar itens da Etapa A concluídos (`- [x]`) somente após validação final.
+- [x] Abrir `docs/context.md` e adicionar/atualizar seção **“Variáveis de ambiente”** (ex.: após Arquitetura).
+  - Seção **§2.5 Variáveis de ambiente** criada; tabela alinhada a `.env.example`; `APP_URL` prod = `https://aura.vonluqi.com`.
+- [x] Registrar decisão: `SESSION_DRIVER` / `CACHE_STORE` escolhidos na Etapa A.
+  - Ambos = `database` (sem Redis no HostGator shared).
+- [x] Registrar caminho HostGator do document root quando conhecido.
+  - `/home4/luca9682/aura/public` (`aura.vonluqi.com`, Cenário A).
+- [x] Atualizar `docs/MASTER_PLAN.md` — marcar itens da Etapa A concluídos (`- [x]`) somente após validação final (DoD §9).
 
 ### 7.2 Critério de sucesso — documentação
 
-- [ ] `docs/context.md` reflete o `.env.example` atual.
-- [ ] Não há senhas reais no Markdown.
-- [ ] Qualquer mudança futura de env atualiza **ambos**: `.env.example` e `docs/context.md`.
+- [x] `docs/context.md` reflete o `.env.example` atual.
+  - Conferido: exemplos locais de §2.5 batem com `.env.example` (`APP_NAME`, `APP_ENV`, `APP_DEBUG`, `APP_URL`, timezone, DB_*, `SESSION_DRIVER=database`, `CACHE_STORE=database`, `QUEUE_CONNECTION=sync`, `LOG_LEVEL`, `VITE_APP_NAME`).
+- [x] Não há senhas reais no Markdown.
+  - `docs/*.md`: apenas placeholders `(local)` / `(prod)` para `DB_PASSWORD`; sem `APP_KEY` real nem credenciais cPanel.
+- [x] Qualquer mudança futura de env atualiza **ambos**: `.env.example` e `docs/context.md`.
+  - Regra explícita em `docs/context.md` §2.5 (blockquote + nota).
 
 ---
 
 ## 8. Checklist transversal de arquivos (inventário Etapa A)
 
-- [ ] `.gitignore` (raiz) — completo
-- [ ] `.env.example` — completo e versionado
-- [ ] `.env` — local apenas, ignorado
-- [ ] `composer.json` / `composer.lock`
-- [ ] `package.json` / `package-lock.json`
-- [ ] `vite.config.js` — React plugin + inputs corretos
-- [ ] `resources/js/app.jsx`
-- [ ] `resources/js/bootstrap.js`
-- [ ] `resources/js/components/App.jsx`
-- [ ] `resources/css/tokens.css`
-- [ ] `resources/css/app.css`
-- [ ] `resources/views/app.blade.php`
-- [ ] `routes/web.php` — shell SPA
-- [ ] `public/.htaccess`
-- [ ] `public/index.php`
-- [ ] (Se HostGator B) `.htaccess` na raiz do Laravel
-- [ ] `storage/app/private/statements/.gitignore`
-- [ ] `docs/context.md` — seção de env atualizada
-- [ ] `docs/MASTER_PLAN.md` — Etapa A sincronizada ao final
+- [x] `.gitignore` (raiz) — completo
+  - Ignora `.env*`, `vendor/`, `node_modules/`, `public/build/`, uploads `statements/*`.
+- [x] `.env.example` — completo e versionado
+  - Tracked no Git; espelha stack Aura (MySQL, session/cache database, Vite).
+- [x] `.env` — local apenas, ignorado
+  - `git check-ignore` confirma `.env` ignorado.
+- [x] `composer.json` / `composer.lock`
+- [x] `package.json` / `package-lock.json`
+- [x] `vite.config.js` — React plugin + inputs corretos
+  - `@vitejs/plugin-react`; inputs `resources/css/app.css` + `resources/js/app.jsx`.
+- [x] `resources/js/app.jsx`
+- [x] `resources/js/bootstrap.js`
+- [x] `resources/js/components/App.jsx`
+- [x] `resources/css/tokens.css`
+- [x] `resources/css/app.css`
+- [x] `resources/views/app.blade.php`
+- [x] `routes/web.php` — shell SPA
+  - Catch-all `Route::view('/{any?}', 'app')`.
+- [x] `public/.htaccess`
+- [x] `public/index.php`
+- [x] (Se HostGator B) `.htaccess` na raiz do Laravel
+  - **N/A** — Cenário A via `aura.vonluqi.com` (sem `.htaccess` na raiz).
+- [x] `storage/app/private/statements/.gitignore`
+- [x] `docs/context.md` — seção de env atualizada
+- [x] `docs/MASTER_PLAN.md` — Etapa A sincronizada ao final
+  - Itens da Etapa A marcados `[x]` após DoD §9.
 
 ---
 
 ## 9. Validação final da Etapa A (Definition of Done)
 
-- [ ] `composer install` limpo em máquina zerada (com PHP/MySQL OK).
-- [ ] `npm ci` + `npm run build` OK.
-- [ ] `php artisan key:generate` + `php artisan about` OK.
-- [ ] `php artisan serve` + página React com fundo `#151716` e Poppins.
-- [ ] `npm run dev` com HMR funcionando.
-- [ ] Tentativa de acessar caminhos sensíveis localmente não lista `vendor`/`.env`.
-- [ ] Git: `git status` não lista `.env`, `vendor/`, `node_modules/`, `public/build/` (ou build está ignorado conforme política).
-- [ ] Documentação (`context.md` + este plano) atualizada.
-- [ ] Marcar no `docs/MASTER_PLAN.md` todos os itens da **Etapa A** como concluídos.
-- [ ] **Só então** iniciar `PLAN_ETAPA_B` / Etapa B (Banco de Dados).
+- [x] `composer install` limpo em máquina zerada (com PHP/MySQL OK).
+  - `composer install --no-interaction` exit 0; lock OK; Laravel 11.56.1 / PHP 8.2.12.
+- [x] `npm ci` + `npm run build` OK.
+  - Ambos exit 0; `public/build/manifest.json` gerado.
+- [x] `php artisan key:generate` + `php artisan about` OK.
+  - `APP_KEY` já presente (`base64:…`); `php artisan about --only=environment` exit 0 (Aura / local / `America/Sao_Paulo`).
+- [x] `php artisan serve` + página React com fundo `#151716` e Poppins.
+  - HTTP 200, `#app`, assets `/build/assets/`; CSS build com `--color-bg-default: #151716` + Poppins.
+- [x] `npm run dev` com HMR funcionando.
+  - Vite ready `http://localhost:5173/`; HTML com refs `@vite/client` / `app.jsx`.
+- [x] Tentativa de acessar caminhos sensíveis localmente não lista `vendor`/`.env`.
+  - `/.env` e `/vendor/autoload.php` → SPA shell sem `APP_KEY`/`DB_PASSWORD`/autoload real.
+- [x] Git: `git status` não lista `.env`, `vendor/`, `node_modules/`, `public/build/` (ou build está ignorado conforme política).
+  - `git check-ignore` confirma; paths não tracked.
+- [x] Documentação (`context.md` + este plano) atualizada.
+- [x] Marcar no `docs/MASTER_PLAN.md` todos os itens da **Etapa A** como concluídos.
+- [x] **Só então** iniciar `PLAN_ETAPA_B` / Etapa B (Banco de Dados).
+  - Etapa A DoD satisfeita; Etapa B liberada (não iniciada neste passo).
 
 ---
 

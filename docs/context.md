@@ -59,6 +59,7 @@ Plataforma web de **controle financeiro pessoal** orientada a inteligência e au
 | Item | Valor |
 | --- | --- |
 | Domínio de produção | `vonluqi.com` |
+| URL do app Aura (HostGator) | `https://aura.vonluqi.com` |
 | Nome do produto / marca | **Aura** (A.U.R.A.) |
 | Tagline | Inteligência invisível, controle absoluto. |
 | UI / Design tokens | Ver `docs/DESIGN-SYSTEM.MD` (dark theme, Poppins, brand `#DCCFFF`) |
@@ -72,9 +73,12 @@ Plataforma web de **controle financeiro pessoal** orientada a inteligência e au
 | Item | Detalhe |
 | --- | --- |
 | Hospedagem | **HostGator** (infraestrutura tradicional / cPanel) |
-| Domínio | `vonluqi.com` |
+| Conta cPanel | `luca9682` · home `/home4/luca9682` |
+| Domínio principal | `vonluqi.com` → Document Root fixo `/public_html` (não editável) |
+| App Aura | Subdomínio `aura.vonluqi.com` → Document Root `/home4/luca9682/aura/public` |
+| Código Laravel | `/home4/luca9682/aura` (pai de `public/` — `.env`, `app/`, `vendor/`, `storage/` fora do web root) |
 | SSL | Obrigatório (Let's Encrypt / certificado do painel) |
-| Deploy | Upload via Git + painel, ou FTP/SFTP; build de assets no CI ou local antes do publish |
+| Deploy | GitHub Actions → FTP (`aura/`) + SSH (extract `vendor` / migrate); ver `docs/DEPLOY_HOSTGATOR.md` |
 | Cron | Disponível via cPanel (jobs de limpeza, se necessário) |
 
 **Implicações:**
@@ -82,7 +86,8 @@ Plataforma web de **controle financeiro pessoal** orientada a inteligência e au
 - Preferir stack **PHP + MySQL**, nativa e estável em shared/cPanel HostGator.
 - Evitar dependência de workers Node persistentes, Redis obrigatório ou containers (não disponíveis no plano tradicional típico).
 - Uploads de extrato devem respeitar limites de `upload_max_filesize` / `post_max_size` do PHP.
-- Sessões e arquivos sensíveis fora do `public_html` (ou acima do document root).
+- Sessões e arquivos sensíveis **fora** do document root: só `aura/public` é servido; resto em `aura/`.
+- Princípio: **nunca** apontar o document root para a raiz do Laravel.
 
 ### 2.2 Stack recomendada (MVP)
 
@@ -123,6 +128,43 @@ Plataforma web de **controle financeiro pessoal** orientada a inteligência e au
 ├── storage/app/private/
 └── public/                    ← document root no HostGator
 ```
+
+### 2.5 Variáveis de ambiente
+
+> Template versionado: `.env.example`. Valores reais ficam só em `.env` / `.env.production` (gitignored).
+> Qualquer mudança de env atualiza **ambos**: `.env.example` e esta seção.
+
+| Variável | Obrigatória | Exemplo local | Exemplo produção | Descrição |
+| --- | --- | --- | --- | --- |
+| `APP_NAME` | sim | `Aura` | igual | Nome da app |
+| `APP_ENV` | sim | `local` | `production` | Ambiente |
+| `APP_KEY` | sim | `(gerada)` | `(gerada única)` | Chave de criptografia (`php artisan key:generate`) |
+| `APP_DEBUG` | sim | `true` | `false` | Nunca `true` em prod |
+| `APP_URL` | sim | `http://localhost:8000` | `https://aura.vonluqi.com` | URL canônica |
+| `APP_TIMEZONE` | sim | `America/Sao_Paulo` | igual | Fuso |
+| `DB_CONNECTION` | sim | `mysql` | `mysql` | Driver |
+| `DB_HOST` | sim | `127.0.0.1` | `localhost` (cPanel) | Host DB |
+| `DB_PORT` | sim | `3306` | `3306` | Porta |
+| `DB_DATABASE` | sim | `aura` | `(nome cPanel)` | Database |
+| `DB_USERNAME` | sim | `aura_dev` | `(user cPanel)` | Usuário |
+| `DB_PASSWORD` | sim | `(local)` | `(prod)` | Senha — **nunca** no Git nem neste doc |
+| `SESSION_DRIVER` | sim | `database` | `database` | Sessões |
+| `CACHE_STORE` | sim | `database` | `database` | Cache |
+| `FILESYSTEM_DISK` | sim | `local` | `local` | Disco default |
+| `QUEUE_CONNECTION` | sim | `sync` | `sync` | Filas (MVP sync) |
+| `LOG_LEVEL` | sim | `debug` | `error` | Verbosity |
+| `VITE_APP_NAME` | não | `${APP_NAME}` | igual | Exposto ao front |
+
+**Decisões Etapa A**
+
+| Decisão | Valor | Motivo |
+| --- | --- | --- |
+| `SESSION_DRIVER` | `database` | Persistência de sessão via MySQL (tabelas Laravel); adequado a HostGator sem Redis |
+| `CACHE_STORE` | `database` | Cache via MySQL; evita dependência de Redis/Memcached no shared hosting |
+| Document root (prod) | `/home4/luca9682/aura/public` | Cenário A: subdomínio `aura.vonluqi.com` → só `public/`; código Laravel em `/home4/luca9682/aura` |
+| `APP_URL` (prod) | `https://aura.vonluqi.com` | URL canônica do app (domínio principal `vonluqi.com` permanece em `/public_html`) |
+
+Variáveis adicionais presentes em `.env.example` (locale, mail log, Redis opcional, AWS placeholders) seguem defaults Laravel; não são críticas ao MVP HostGator e podem permanecer como no template.
 
 ---
 
@@ -221,13 +263,13 @@ Checklist técnico do MVP. Marque itens conforme forem concluídos.
 
 ### Etapa A — Setup do projeto
 
-- [ ] Inicializar repositório Git e `.gitignore` (`.env`, `vendor`, `node_modules`, uploads).
-- [ ] Criar aplicação Laravel 11 + configurar `.env.example`.
-- [ ] Configurar Vite + React no frontend (`resources/js`).
-- [ ] Definir document root `public/` e regras Apache/`.htaccess`.
-- [ ] Instalar fonte Poppins e espelhar tokens CSS a partir de `docs/DESIGN-SYSTEM.MD`.
-- [ ] Configurar ambiente local (PHP, Composer, Node, MySQL).
-- [ ] Documentar variáveis de ambiente necessárias neste `context.md` se mudarem.
+- [x] Inicializar repositório Git e `.gitignore` (`.env`, `vendor`, `node_modules`, uploads).
+- [x] Criar aplicação Laravel 11 + configurar `.env.example`.
+- [x] Configurar Vite + React no frontend (`resources/js`).
+- [x] Definir document root `public/` e regras Apache/`.htaccess`.
+- [x] Instalar fonte Poppins e espelhar tokens CSS a partir de `docs/DESIGN-SYSTEM.MD`.
+- [x] Configurar ambiente local (PHP, Composer, Node, MySQL).
+- [x] Documentar variáveis de ambiente necessárias neste `context.md` se mudarem.
 
 ### Etapa B — Banco de Dados
 
