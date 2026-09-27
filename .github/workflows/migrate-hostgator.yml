@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Artisan migrate + cache (SSH)
+      - name: Artisan migrate + verify tables (SSH)
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.FTP_SERVER }}
@@ -22,44 +22,71 @@ jobs:
           script: |
             set -e
             cd ~/aura || cd /home4/luca9682/aura
+            echo "=== cwd ==="
             pwd
+            ls -la artisan .env vendor/autoload.php 2>&1 | head -20
+
             test -f .env
             test -f artisan
-            test -d vendor || { echo "FATAL: vendor/ missing — rode Deploy HostGator antes"; exit 1; }
+            test -d vendor || { echo "FATAL: vendor/ missing"; exit 1; }
 
             PHP_BIN=""
             for c in ea-php82 php82 /opt/cpanel/ea-php82/root/usr/bin/php php; do
-              if command -v "$c" >/dev/null 2>&1; then
-                PHP_BIN="$c"
-                break
-              fi
-              if [ -x "$c" ]; then
-                PHP_BIN="$c"
-                break
-              fi
+              if command -v "$c" >/dev/null 2>&1; then PHP_BIN="$c"; break; fi
+              if [ -x "$c" ]; then PHP_BIN="$c"; break; fi
             done
             echo "Using PHP: $PHP_BIN"
             "$PHP_BIN" -v | head -1
-            "$PHP_BIN" artisan --version
 
-            # Quote DB_PASSWORD if it has special chars and is unquoted (e.g. @)
+            # Quote DB_PASSWORD if unquoted and has special chars
             if grep -qE '^DB_PASSWORD=[^"].*[@#\$!]' .env 2>/dev/null; then
-              echo "Fixing unquoted DB_PASSWORD with special chars..."
+              echo "Fixing unquoted DB_PASSWORD..."
               sed -i -E 's/^DB_PASSWORD=(.*)$/DB_PASSWORD="\1"/' .env
             fi
+
+            # Show which DB Laravel will use (no secrets)
+            echo "=== env DB_* names (no password) ==="
+            grep -E '^(DB_CONNECTION|DB_HOST|DB_PORT|DB_DATABASE|DB_USERNAME)=' .env || true
+
+            echo "=== config database name ==="
+            "$PHP_BIN" artisan config:clear || true
+            "$PHP_BIN" -r '
+            require "vendor/autoload.php";
+            $app = require "bootstrap/app.php";
+            $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
+            $kernel->bootstrap();
+            echo "connection=".config("database.default").PHP_EOL;
+            echo "database=".config("database.connections.".config("database.default").".database").PHP_EOL;
+            echo "host=".config("database.connections.".config("database.default").".host").PHP_EOL;
+            echo "username=".config("database.connections.".config("database.default").".username").PHP_EOL;
+            '
 
             echo "=== migrate:status (before) ==="
             "$PHP_BIN" artisan migrate:status || true
 
             echo "=== migrate --force ==="
-            "$PHP_BIN" artisan migrate --force -v
+            "$PHP_BIN" artisan migrate --force -vvv
 
-            echo "=== config/route/view cache ==="
-            "$PHP_BIN" artisan config:clear || true
+            echo "=== tables after migrate ==="
+            TABLES="$("$PHP_BIN" -r '
+            require "vendor/autoload.php";
+            $app = require "bootstrap/app.php";
+            $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+            $tables = Illuminate\Support\Facades\Schema::getTableListing();
+            echo implode(",", $tables);
+            echo PHP_EOL."count=".count($tables).PHP_EOL;
+            ')"
+            echo "$TABLES"
+
+            COUNT="$(echo "$TABLES" | sed -n 's/.*count=//p' | tail -1)"
+            if [ -z "$COUNT" ] || [ "$COUNT" -lt 1 ]; then
+              echo "FATAL: migrate reported OK but database has 0 tables — wrong DB or connection."
+              exit 1
+            fi
+
+            echo "=== cache ==="
             "$PHP_BIN" artisan config:cache
-            "$PHP_BIN" artisan route:cache || echo "WARN: route:cache skipped/failed (SPA catch-all ok)"
+            "$PHP_BIN" artisan route:cache || echo "WARN: route:cache failed (ok for SPA)"
             "$PHP_BIN" artisan view:cache || true
 
-            echo "=== migrate:status (after) ==="
-            "$PHP_BIN" artisan migrate:status
-            echo "Migrate + cache OK"
+            echo "Migrate verified OK ($COUNT tables)"
