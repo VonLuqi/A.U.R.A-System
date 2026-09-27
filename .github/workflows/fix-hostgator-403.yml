@@ -1,0 +1,43 @@
+name: Fix HostGator 403
+
+# Lista aura/public e corrige permissões típicas de 403 na HostGator.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Diagnose + chmod public
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          port: 22
+          script: |
+            set -e
+            cd ~/aura || cd /home4/luca9682/aura
+            echo "=== pwd ==="
+            pwd
+            echo "=== aura top ==="
+            ls -la
+            echo "=== public ==="
+            ls -la public || echo "MISSING public/"
+            echo "=== index/htaccess ==="
+            ls -la public/index.php public/.htaccess 2>&1 || true
+            echo "=== .env ==="
+            test -f .env && echo ".env OK" || echo ".env MISSING"
+            echo "=== vendor ==="
+            test -d vendor && echo "vendor OK" || echo "vendor MISSING"
+            echo "=== fixing perms ==="
+            find . -type d -exec chmod 755 {} \;
+            find . -type f -exec chmod 644 {} \;
+            chmod -R 775 storage bootstrap/cache || true
+            chmod 755 public
+            chmod 644 public/index.php public/.htaccess 2>/dev/null || true
+            echo "=== public after ==="
+            ls -la public
+            echo "DONE"
