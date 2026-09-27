@@ -1,8 +1,7 @@
 name: Migrate HostGator
 
-# Roda migrate/cache no servidor e exige tabelas MySQL reais.
-# Requer Shell/SSH habilitado no cPanel (senão a HostGator só imprime
-# "Shell access is not enabled" e o drone-ssh mentia sucesso).
+# Migrate sem shell SSH (HostGator costuma ter "Shell access is not enabled").
+# Sobe um PHP one-shot via FTP, executa por HTTPS, apaga o arquivo.
 
 on:
   workflow_dispatch:
@@ -12,95 +11,115 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Install sshpass
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+      - name: Install tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lftp curl
 
-      - name: Artisan migrate + verify MySQL tables (SSH)
+      - name: Upload one-shot migrate + run + delete
         env:
-          SSHPASS: ${{ secrets.FTP_PASSWORD }}
-          SSH_HOST: ${{ secrets.FTP_SERVER }}
-          SSH_USER: ${{ secrets.FTP_USERNAME }}
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_SERVER_DIR: ${{ secrets.FTP_SERVER_DIR }}
         run: |
           set -euo pipefail
-          SCRIPT=$(cat <<'EOF'
+          TOKEN=$(openssl rand -hex 32)
+          DIR="${FTP_SERVER_DIR%/}"
+
+          cat > __migrate_once.php <<PHP
+          <?php
+          declare(strict_types=1);
+
+          \$expected = '${TOKEN}';
+          \$given = (string) (\$_GET['token'] ?? '');
+          if (\$expected === '' || !hash_equals(\$expected, \$given)) {
+              http_response_code(403);
+              header('Content-Type: text/plain; charset=UTF-8');
+              echo "Forbidden\n";
+              exit;
+          }
+
+          header('Content-Type: text/plain; charset=UTF-8');
+
+          try {
+              require __DIR__ . '/../vendor/autoload.php';
+              \$app = require __DIR__ . '/../bootstrap/app.php';
+              \$kernel = \$app->make(Illuminate\Contracts\Console\Kernel::class);
+              \$kernel->bootstrap();
+
+              \$driver = config('database.default');
+              \$db = config("database.connections.{\$driver}.database");
+              \$host = config("database.connections.{\$driver}.host");
+              echo "driver={\$driver}\n";
+              echo "host={\$host}\n";
+              echo "database={\$db}\n";
+
+              if (\$driver !== 'mysql' || \$db !== 'luca9682_aura') {
+                  throw new RuntimeException("Expected mysql/luca9682_aura, got {\$driver}/{\$db}");
+              }
+
+              Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
+              echo Illuminate\Support\Facades\Artisan::output();
+
+              \$tables = Illuminate\Support\Facades\Schema::getTableListing();
+              sort(\$tables);
+              echo 'tables=' . implode(',', \$tables) . "\n";
+              echo 'count=' . count(\$tables) . "\n";
+
+              foreach (['migrations', 'users', 'sessions', 'cache'] as \$need) {
+                  if (!in_array(\$need, \$tables, true)) {
+                      throw new RuntimeException("Missing table: {\$need}");
+                  }
+              }
+
+              Illuminate\Support\Facades\Artisan::call('config:cache');
+              echo "config:cache OK\n";
+              echo "MIGRATE_OK\n";
+          } catch (Throwable \$e) {
+              http_response_code(500);
+              echo 'ERROR: ' . \$e->getMessage() . "\n";
+              echo \$e->getFile() . ':' . \$e->getLine() . "\n";
+              @unlink(__FILE__);
+              exit(1);
+          }
+
+          @unlink(__FILE__);
+          PHP
+
+          # Normalize leading spaces from heredoc indent
+          sed -i 's/^          //' __migrate_once.php
+
+          echo "Uploading one-shot via FTP..."
+          lftp -c "
+            set ftp:ssl-allow no;
+            set net:timeout 60;
+            open -u ${FTP_USERNAME},${FTP_PASSWORD} ${FTP_SERVER};
+            cd ${DIR}/public;
+            put __migrate_once.php;
+            bye
+          "
+
+          echo "Running migrate over HTTPS..."
+          set +e
+          RESP=$(curl -fsS -L --max-time 120 \
+            "https://aura.vonluqi.com/__migrate_once.php?token=${TOKEN}" 2>&1)
+          RC=$?
           set -e
-          echo "START migrate workflow"
-          cd ~/aura || cd /home4/luca9682/aura
-          pwd
-          ls -la artisan .env
-          test -d vendor
+          echo "$RESP"
 
-          PHP_BIN=php
-          command -v ea-php82 >/dev/null 2>&1 && PHP_BIN=ea-php82
-          [ -x /opt/cpanel/ea-php82/root/usr/bin/php ] && PHP_BIN=/opt/cpanel/ea-php82/root/usr/bin/php
-          echo "PHP_BIN=$PHP_BIN"
-          $PHP_BIN -v | head -1
-          $PHP_BIN artisan --version
+          echo "Deleting one-shot (best effort)..."
+          lftp -c "
+            set ftp:ssl-allow no;
+            set net:timeout 30;
+            open -u ${FTP_USERNAME},${FTP_PASSWORD} ${FTP_SERVER};
+            cd ${DIR}/public;
+            rm -f __migrate_once.php;
+            bye
+          " || true
+          rm -f __migrate_once.php
 
-          if grep -qE '^DB_PASSWORD=[^"].*[@#$!]' .env; then
-            echo "Quoting DB_PASSWORD"
-            sed -i -E 's/^DB_PASSWORD=(.*)$/DB_PASSWORD="\1"/' .env
-          fi
-
-          echo "ENV DB (no password):"
-          grep -E '^(DB_CONNECTION|DB_HOST|DB_PORT|DB_DATABASE|DB_USERNAME)=' .env
-
-          test "$(grep '^DB_CONNECTION=' .env | cut -d= -f2-)" = "mysql"
-          test "$(grep '^DB_DATABASE=' .env | cut -d= -f2-)" = "luca9682_aura"
-
-          $PHP_BIN artisan config:clear
-          rm -f bootstrap/cache/config.php
-
-          echo "DB SHOW:"
-          $PHP_BIN artisan db:show || true
-
-          echo "MIGRATE:"
-          $PHP_BIN artisan migrate --force -vvv
-
-          echo "TABLES:"
-          TABLES=$($PHP_BIN artisan tinker --execute="echo implode(',', Illuminate\\Support\\Facades\\Schema::getTableListing());")
-          echo "TABLES_RESULT=$TABLES"
-          echo "$TABLES" | grep -q migrations
-          echo "$TABLES" | grep -q users
-          echo "$TABLES" | grep -q sessions
-          echo "$TABLES" | grep -q cache
-
-          $PHP_BIN artisan config:cache
-          $PHP_BIN artisan route:cache || echo "route:cache skipped"
-          $PHP_BIN artisan view:cache || true
-          echo "DONE migrate OK"
-          EOF
-          )
-
-          OUT_FILE=$(mktemp)
-          CONNECTED=0
-          for PORT in 22 2222; do
-            echo "Trying SSH port $PORT ..."
-            set +e
-            sshpass -e ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no \
-              -p "$PORT" "${SSH_USER}@${SSH_HOST}" "bash -s" <<<"$SCRIPT" 2>&1 | tee "$OUT_FILE"
-            RC=${PIPESTATUS[0]}
-            set -e
-            if grep -qi "Shell access is not enabled" "$OUT_FILE"; then
-              echo ""
-              echo "FATAL: Shell/SSH Access is DISABLED on this HostGator account."
-              echo "cPanel → search 'SSH Access' / 'Gerenciar acesso SSH' → Enable."
-              echo "Then re-run this workflow."
-              exit 1
-            fi
-            if [ "$RC" -eq 0 ]; then
-              CONNECTED=1
-              break
-            fi
-            echo "Port $PORT failed (exit $RC), trying next..."
-          done
-
-          if [ "$CONNECTED" -ne 1 ]; then
-            echo "FATAL: SSH failed on ports 22 and 2222"
+          if [ "$RC" -ne 0 ]; then
+            echo "FATAL: curl failed (exit $RC)"
             exit 1
           fi
-
-          if ! grep -q "DONE migrate OK" "$OUT_FILE"; then
-            echo "FATAL: remote script did not finish"
-            exit 1
-          fi
+          echo "$RESP" | grep -q MIGRATE_OK
+          echo "Migrate HostGator OK (no SSH shell required)"

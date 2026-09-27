@@ -23,17 +23,15 @@
 4. FTP do `vendor.tar.gz`
 5. SSH extrai o `vendor.tar.gz` em `~/aura`
 
-### SSH obrigatório
+### SSH / Shell Access
 
-No cPanel, busque **SSH Access** / **Gerenciar acesso SSH** / **Manage Shell Access** → **Enable** para `luca9682`.
+**Chave SSH autorizada ≠ shell liberado.** Em “Gerenciar chaves do SSH” dá para criar `aura_rsa`, mas a conta ainda pode responder:
 
-Se o log da Action mostrar `Shell access is not enabled on your account!`, o migrate/extract **não rodou** (a HostGator aceita o TCP e responde essa mensagem; workflows antigos marcavam verde à toa).
+`Shell access is not enabled on your account!`
 
-Sem shell habilitado:
-- `vendor.tar.gz` não é extraído via SSH
-- `php artisan migrate` não cria tabelas → site 500 / DB vazia
+Nesse caso o migrate via SSH **não roda**. O workflow **Migrate HostGator** usa FTP + PHP one-shot por HTTPS (não depende de shell).
 
-Depois de habilitar, rode **Migrate HostGator** (ou um novo deploy).
+Para extract de `vendor.tar.gz` no deploy completo, shell ainda ajuda. Sem shell: no FileZilla, em `aura/`, se existir `vendor.tar.gz`, extraia/descompacte para gerar a pasta `vendor/`, ou peça à HostGator para habilitar **Shell Access** (não só chaves).
 
 ## Preparação única após 1º deploy
 
