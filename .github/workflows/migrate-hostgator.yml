@@ -22,10 +22,44 @@ jobs:
           script: |
             set -e
             cd ~/aura || cd /home4/luca9682/aura
+            pwd
             test -f .env
-            php artisan --version
-            php artisan migrate --force
-            php artisan config:cache
-            php artisan route:cache
-            php artisan view:cache
+            test -f artisan
+            test -d vendor || { echo "FATAL: vendor/ missing — rode Deploy HostGator antes"; exit 1; }
+
+            PHP_BIN=""
+            for c in ea-php82 php82 /opt/cpanel/ea-php82/root/usr/bin/php php; do
+              if command -v "$c" >/dev/null 2>&1; then
+                PHP_BIN="$c"
+                break
+              fi
+              if [ -x "$c" ]; then
+                PHP_BIN="$c"
+                break
+              fi
+            done
+            echo "Using PHP: $PHP_BIN"
+            "$PHP_BIN" -v | head -1
+            "$PHP_BIN" artisan --version
+
+            # Quote DB_PASSWORD if it has special chars and is unquoted (e.g. @)
+            if grep -qE '^DB_PASSWORD=[^"].*[@#\$!]' .env 2>/dev/null; then
+              echo "Fixing unquoted DB_PASSWORD with special chars..."
+              sed -i -E 's/^DB_PASSWORD=(.*)$/DB_PASSWORD="\1"/' .env
+            fi
+
+            echo "=== migrate:status (before) ==="
+            "$PHP_BIN" artisan migrate:status || true
+
+            echo "=== migrate --force ==="
+            "$PHP_BIN" artisan migrate --force -v
+
+            echo "=== config/route/view cache ==="
+            "$PHP_BIN" artisan config:clear || true
+            "$PHP_BIN" artisan config:cache
+            "$PHP_BIN" artisan route:cache || echo "WARN: route:cache skipped/failed (SPA catch-all ok)"
+            "$PHP_BIN" artisan view:cache || true
+
+            echo "=== migrate:status (after) ==="
+            "$PHP_BIN" artisan migrate:status
             echo "Migrate + cache OK"
