@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Artisan migrate + verify tables (SSH)
+      - name: Artisan migrate + verify MySQL tables (SSH)
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.FTP_SERVER }}
@@ -24,7 +24,8 @@ jobs:
             cd ~/aura || cd /home4/luca9682/aura
             echo "=== cwd ==="
             pwd
-            ls -la artisan .env vendor/autoload.php 2>&1 | head -20
+            ls -la artisan .env vendor/autoload.php database 2>&1 | head -30
+            ls -la database/*.sqlite 2>&1 || echo "(no sqlite files)"
 
             test -f .env
             test -f artisan
@@ -38,55 +39,81 @@ jobs:
             echo "Using PHP: $PHP_BIN"
             "$PHP_BIN" -v | head -1
 
-            # Quote DB_PASSWORD if unquoted and has special chars
             if grep -qE '^DB_PASSWORD=[^"].*[@#\$!]' .env 2>/dev/null; then
               echo "Fixing unquoted DB_PASSWORD..."
               sed -i -E 's/^DB_PASSWORD=(.*)$/DB_PASSWORD="\1"/' .env
             fi
 
-            # Show which DB Laravel will use (no secrets)
-            echo "=== env DB_* names (no password) ==="
+            echo "=== .env DB lines (no password value) ==="
             grep -E '^(DB_CONNECTION|DB_HOST|DB_PORT|DB_DATABASE|DB_USERNAME)=' .env || true
+            # Detect dangerous defaults
+            if grep -qE '^DB_CONNECTION=sqlite' .env; then
+              echo "FATAL: DB_CONNECTION=sqlite — phpMyAdmin MySQL will stay empty"
+              exit 1
+            fi
+            if ! grep -qE '^DB_DATABASE=luca9682_aura$' .env; then
+              echo "FATAL: DB_DATABASE must be exactly luca9682_aura"
+              grep '^DB_DATABASE=' .env || true
+              exit 1
+            fi
 
-            echo "=== config database name ==="
             "$PHP_BIN" artisan config:clear || true
+            rm -f bootstrap/cache/config.php
+
+            echo "=== runtime connection ==="
             "$PHP_BIN" -r '
             require "vendor/autoload.php";
             $app = require "bootstrap/app.php";
-            $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
-            $kernel->bootstrap();
-            echo "connection=".config("database.default").PHP_EOL;
-            echo "database=".config("database.connections.".config("database.default").".database").PHP_EOL;
-            echo "host=".config("database.connections.".config("database.default").".host").PHP_EOL;
-            echo "username=".config("database.connections.".config("database.default").".username").PHP_EOL;
+            $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+            $default = config("database.default");
+            $cfg = config("database.connections.$default");
+            echo "default=$default\n";
+            echo "driver=" . ($cfg["driver"] ?? "?") . "\n";
+            echo "host=" . ($cfg["host"] ?? "?") . "\n";
+            echo "database=" . ($cfg["database"] ?? "?") . "\n";
+            echo "username=" . ($cfg["username"] ?? "?") . "\n";
+            if (($cfg["driver"] ?? "") !== "mysql") {
+              fwrite(STDERR, "FATAL: runtime driver is not mysql\n");
+              exit(1);
+            }
+            if (($cfg["database"] ?? "") !== "luca9682_aura") {
+              fwrite(STDERR, "FATAL: runtime database is not luca9682_aura\n");
+              exit(1);
+            }
             '
-
-            echo "=== migrate:status (before) ==="
-            "$PHP_BIN" artisan migrate:status || true
 
             echo "=== migrate --force ==="
             "$PHP_BIN" artisan migrate --force -vvv
 
-            echo "=== tables after migrate ==="
-            TABLES="$("$PHP_BIN" -r '
+            echo "=== SHOW TABLES via MySQL ==="
+            "$PHP_BIN" -r '
             require "vendor/autoload.php";
             $app = require "bootstrap/app.php";
             $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
-            $tables = Illuminate\Support\Facades\Schema::getTableListing();
-            echo implode(",", $tables);
-            echo PHP_EOL."count=".count($tables).PHP_EOL;
-            ')"
-            echo "$TABLES"
-
-            COUNT="$(echo "$TABLES" | sed -n 's/.*count=//p' | tail -1)"
-            if [ -z "$COUNT" ] || [ "$COUNT" -lt 1 ]; then
-              echo "FATAL: migrate reported OK but database has 0 tables — wrong DB or connection."
-              exit 1
-            fi
+            $rows = Illuminate\Support\Facades\DB::select("SHOW TABLES");
+            $names = [];
+            foreach ($rows as $row) {
+              $names[] = array_values((array) $row)[0];
+            }
+            sort($names);
+            echo "tables=" . implode(",", $names) . "\n";
+            echo "count=" . count($names) . "\n";
+            if (count($names) < 1) {
+              fwrite(STDERR, "FATAL: MySQL SHOW TABLES returned 0\n");
+              exit(1);
+            }
+            $need = ["migrations", "users", "sessions", "cache"];
+            foreach ($need as $t) {
+              if (!in_array($t, $names, true)) {
+                fwrite(STDERR, "FATAL: missing table $t\n");
+                exit(1);
+              }
+            }
+            '
 
             echo "=== cache ==="
             "$PHP_BIN" artisan config:cache
-            "$PHP_BIN" artisan route:cache || echo "WARN: route:cache failed (ok for SPA)"
+            "$PHP_BIN" artisan route:cache || echo "WARN: route:cache failed"
             "$PHP_BIN" artisan view:cache || true
 
-            echo "Migrate verified OK ($COUNT tables)"
+            echo "Migrate verified on MySQL luca9682_aura"
