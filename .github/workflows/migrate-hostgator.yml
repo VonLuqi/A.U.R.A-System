@@ -1,7 +1,6 @@
 name: Migrate HostGator
 
-# Migrate sem shell SSH (HostGator costuma ter "Shell access is not enabled").
-# Sobe um PHP one-shot via FTP, executa por HTTPS, apaga o arquivo.
+# Migrate sem shell SSH: FTP + PHP one-shot por HTTPS.
 
 on:
   workflow_dispatch:
@@ -12,7 +11,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Install tools
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq lftp curl
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lftp curl python3
 
       - name: Upload one-shot migrate + run + delete
         env:
@@ -23,70 +22,113 @@ jobs:
         run: |
           set -euo pipefail
           TOKEN=$(openssl rand -hex 32)
+          export TOKEN
           DIR="${FTP_SERVER_DIR%/}"
 
-          cat > __migrate_once.php <<PHP
-          <?php
-          declare(strict_types=1);
+          python3 <<'PY'
+          import os
+          from pathlib import Path
 
-          \$expected = '${TOKEN}';
-          \$given = (string) (\$_GET['token'] ?? '');
-          if (\$expected === '' || !hash_equals(\$expected, \$given)) {
+          token = os.environ["TOKEN"]
+          # Keep PHP braces literal; only inject token.
+          php = """<?php
+          declare(strict_types=1);
+          error_reporting(E_ALL);
+          ini_set('display_errors', '1');
+          header('Content-Type: text/plain; charset=UTF-8');
+
+          $expected = '__TOKEN__';
+          $given = (string) ($_GET['token'] ?? '');
+          if ($expected === '' || !hash_equals($expected, $given)) {
               http_response_code(403);
-              header('Content-Type: text/plain; charset=UTF-8');
-              echo "Forbidden\n";
+              echo "Forbidden\\n";
               exit;
           }
 
-          header('Content-Type: text/plain; charset=UTF-8');
-
-          try {
-              require __DIR__ . '/../vendor/autoload.php';
-              \$app = require __DIR__ . '/../bootstrap/app.php';
-              \$kernel = \$app->make(Illuminate\Contracts\Console\Kernel::class);
-              \$kernel->bootstrap();
-
-              \$driver = config('database.default');
-              \$db = config("database.connections.{\$driver}.database");
-              \$host = config("database.connections.{\$driver}.host");
-              echo "driver={\$driver}\n";
-              echo "host={\$host}\n";
-              echo "database={\$db}\n";
-
-              if (\$driver !== 'mysql' || \$db !== 'luca9682_aura') {
-                  throw new RuntimeException("Expected mysql/luca9682_aura, got {\$driver}/{\$db}");
-              }
-
-              Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
-              echo Illuminate\Support\Facades\Artisan::output();
-
-              \$tables = Illuminate\Support\Facades\Schema::getTableListing();
-              sort(\$tables);
-              echo 'tables=' . implode(',', \$tables) . "\n";
-              echo 'count=' . count(\$tables) . "\n";
-
-              foreach (['migrations', 'users', 'sessions', 'cache'] as \$need) {
-                  if (!in_array(\$need, \$tables, true)) {
-                      throw new RuntimeException("Missing table: {\$need}");
-                  }
-              }
-
-              Illuminate\Support\Facades\Artisan::call('config:cache');
-              echo "config:cache OK\n";
-              echo "MIGRATE_OK\n";
-          } catch (Throwable \$e) {
+          function fail(string $msg): void {
               http_response_code(500);
-              echo 'ERROR: ' . \$e->getMessage() . "\n";
-              echo \$e->getFile() . ':' . \$e->getLine() . "\n";
+              echo "ERROR: {$msg}\\n";
               @unlink(__FILE__);
               exit(1);
           }
 
-          @unlink(__FILE__);
-          PHP
+          $root = dirname(__DIR__);
+          echo "root={$root}\\n";
+          echo "php=" . PHP_VERSION . "\\n";
 
-          # Normalize leading spaces from heredoc indent
-          sed -i 's/^          //' __migrate_once.php
+          if (!is_file($root . '/vendor/autoload.php')) {
+              fail('vendor/autoload.php missing — unzip vendor.tar.gz in aura/ via FileZilla first');
+          }
+          if (!is_file($root . '/.env')) {
+              fail('.env missing in Laravel root');
+          }
+
+          try {
+              require $root . '/vendor/autoload.php';
+              $app = require $root . '/bootstrap/app.php';
+              $kernel = $app->make(Illuminate\\Contracts\\Console\\Kernel::class);
+              $kernel->bootstrap();
+
+              $driver = (string) config('database.default');
+              $db = (string) config("database.connections.{$driver}.database");
+              $host = (string) config("database.connections.{$driver}.host");
+              echo "driver={$driver}\\n";
+              echo "host={$host}\\n";
+              echo "database={$db}\\n";
+
+              if ($driver !== 'mysql' || $db !== 'luca9682_aura') {
+                  fail("Expected mysql/luca9682_aura, got {$driver}/{$db}");
+              }
+
+              $envPath = $root . '/.env';
+              $env = file_get_contents($envPath);
+              if ($env !== false && preg_match('/^DB_PASSWORD=[^"].*[@#$!]/m', $env)) {
+                  $env2 = preg_replace('/^DB_PASSWORD=(.*)$/m', 'DB_PASSWORD="$1"', $env, 1);
+                  file_put_contents($envPath, $env2);
+                  echo "quoted DB_PASSWORD\\n";
+              }
+
+              Illuminate\\Support\\Facades\\Artisan::call('config:clear');
+              Illuminate\\Support\\Facades\\Artisan::call('migrate', ['--force' => true]);
+              echo Illuminate\\Support\\Facades\\Artisan::output();
+
+              $tables = Illuminate\\Support\\Facades\\Schema::getTableListing();
+              sort($tables);
+              echo 'tables=' . implode(',', $tables) . "\\n";
+              echo 'count=' . count($tables) . "\\n";
+
+              foreach (['migrations', 'users', 'sessions', 'cache'] as $need) {
+                  if (!in_array($need, $tables, true)) {
+                      fail("Missing table: {$need}");
+                  }
+              }
+
+              Illuminate\\Support\\Facades\\Artisan::call('config:cache');
+              echo "config:cache OK\\n";
+              echo "MIGRATE_OK\\n";
+          } catch (Throwable $e) {
+              fail($e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
+          }
+
+          @unlink(__FILE__);
+          """
+          php = php.replace("__TOKEN__", token)
+          # Dedent: template uses 2-space indent from YAML-less python string — strip leading 2 spaces per line if present after <?php block
+          # Actually the """ content has leading 2 spaces on each line from my indentation in the workflow - strip them
+          lines = php.splitlines(True)
+          out = []
+          for i, line in enumerate(lines):
+              if line.startswith("  "):
+                  out.append(line[2:])
+              else:
+                  out.append(line)
+          text = "".join(out)
+          Path("__migrate_once.php").write_text(text, encoding="utf-8", newline="\n")
+          print("wrote", Path("__migrate_once.php").stat().st_size, "bytes")
+          PY
+
+          echo "=== first lines of one-shot ==="
+          head -n 12 __migrate_once.php
 
           echo "Uploading one-shot via FTP..."
           lftp -c "
@@ -95,16 +137,20 @@ jobs:
             open -u ${FTP_USERNAME},${FTP_PASSWORD} ${FTP_SERVER};
             cd ${DIR}/public;
             put __migrate_once.php;
+            ls -l __migrate_once.php;
             bye
           "
 
           echo "Running migrate over HTTPS..."
-          set +e
-          RESP=$(curl -fsS -L --max-time 120 \
-            "https://aura.vonluqi.com/__migrate_once.php?token=${TOKEN}" 2>&1)
-          RC=$?
-          set -e
-          echo "$RESP"
+          RESP_FILE=$(mktemp)
+          HTTP_CODE=$(curl -sS -L --max-time 180 \
+            -o "$RESP_FILE" -w "%{http_code}" \
+            "https://aura.vonluqi.com/__migrate_once.php?token=${TOKEN}" || echo "000")
+          echo "HTTP_CODE=$HTTP_CODE"
+          echo "----- BODY -----"
+          cat "$RESP_FILE" || true
+          echo ""
+          echo "----- END -----"
 
           echo "Deleting one-shot (best effort)..."
           lftp -c "
@@ -117,9 +163,5 @@ jobs:
           " || true
           rm -f __migrate_once.php
 
-          if [ "$RC" -ne 0 ]; then
-            echo "FATAL: curl failed (exit $RC)"
-            exit 1
-          fi
-          echo "$RESP" | grep -q MIGRATE_OK
-          echo "Migrate HostGator OK (no SSH shell required)"
+          grep -q MIGRATE_OK "$RESP_FILE"
+          echo "Migrate HostGator OK"
