@@ -1,7 +1,8 @@
 name: Migrate HostGator
 
 # Roda migrate/cache no servidor e exige tabelas MySQL reais.
-# Use quando o .env já está no servidor e o código já foi deployado.
+# Requer Shell/SSH habilitado no cPanel (senão a HostGator só imprime
+# "Shell access is not enabled" e o drone-ssh mentia sucesso).
 
 on:
   workflow_dispatch:
@@ -11,66 +12,95 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Install sshpass
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+
       - name: Artisan migrate + verify MySQL tables (SSH)
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          port: 22
-          command_timeout: 10m
-          debug: true
-          script_stop: true
-          request_pty: true
-          script: |
-            set -ex
-            echo "START migrate workflow"
-            cd ~/aura || cd /home4/luca9682/aura
-            pwd
-            ls -la artisan .env
-            test -d vendor
+        env:
+          SSHPASS: ${{ secrets.FTP_PASSWORD }}
+          SSH_HOST: ${{ secrets.FTP_SERVER }}
+          SSH_USER: ${{ secrets.FTP_USERNAME }}
+        run: |
+          set -euo pipefail
+          SCRIPT=$(cat <<'EOF'
+          set -e
+          echo "START migrate workflow"
+          cd ~/aura || cd /home4/luca9682/aura
+          pwd
+          ls -la artisan .env
+          test -d vendor
 
-            PHP_BIN=php
-            command -v ea-php82 >/dev/null 2>&1 && PHP_BIN=ea-php82
-            command -v /opt/cpanel/ea-php82/root/usr/bin/php >/dev/null 2>&1 && PHP_BIN=/opt/cpanel/ea-php82/root/usr/bin/php
-            echo "PHP_BIN=$PHP_BIN"
-            $PHP_BIN -v | head -1
-            $PHP_BIN artisan --version
+          PHP_BIN=php
+          command -v ea-php82 >/dev/null 2>&1 && PHP_BIN=ea-php82
+          [ -x /opt/cpanel/ea-php82/root/usr/bin/php ] && PHP_BIN=/opt/cpanel/ea-php82/root/usr/bin/php
+          echo "PHP_BIN=$PHP_BIN"
+          $PHP_BIN -v | head -1
+          $PHP_BIN artisan --version
 
-            # Quote DB_PASSWORD if needed
-            if grep -qE '^DB_PASSWORD=[^"].*[@#$!]' .env; then
-              echo "Quoting DB_PASSWORD"
-              sed -i -E 's/^DB_PASSWORD=(.*)$/DB_PASSWORD="\1"/' .env
+          if grep -qE '^DB_PASSWORD=[^"].*[@#$!]' .env; then
+            echo "Quoting DB_PASSWORD"
+            sed -i -E 's/^DB_PASSWORD=(.*)$/DB_PASSWORD="\1"/' .env
+          fi
+
+          echo "ENV DB (no password):"
+          grep -E '^(DB_CONNECTION|DB_HOST|DB_PORT|DB_DATABASE|DB_USERNAME)=' .env
+
+          test "$(grep '^DB_CONNECTION=' .env | cut -d= -f2-)" = "mysql"
+          test "$(grep '^DB_DATABASE=' .env | cut -d= -f2-)" = "luca9682_aura"
+
+          $PHP_BIN artisan config:clear
+          rm -f bootstrap/cache/config.php
+
+          echo "DB SHOW:"
+          $PHP_BIN artisan db:show || true
+
+          echo "MIGRATE:"
+          $PHP_BIN artisan migrate --force -vvv
+
+          echo "TABLES:"
+          TABLES=$($PHP_BIN artisan tinker --execute="echo implode(',', Illuminate\\Support\\Facades\\Schema::getTableListing());")
+          echo "TABLES_RESULT=$TABLES"
+          echo "$TABLES" | grep -q migrations
+          echo "$TABLES" | grep -q users
+          echo "$TABLES" | grep -q sessions
+          echo "$TABLES" | grep -q cache
+
+          $PHP_BIN artisan config:cache
+          $PHP_BIN artisan route:cache || echo "route:cache skipped"
+          $PHP_BIN artisan view:cache || true
+          echo "DONE migrate OK"
+          EOF
+          )
+
+          OUT_FILE=$(mktemp)
+          CONNECTED=0
+          for PORT in 22 2222; do
+            echo "Trying SSH port $PORT ..."
+            set +e
+            sshpass -e ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no \
+              -p "$PORT" "${SSH_USER}@${SSH_HOST}" "bash -s" <<<"$SCRIPT" 2>&1 | tee "$OUT_FILE"
+            RC=${PIPESTATUS[0]}
+            set -e
+            if grep -qi "Shell access is not enabled" "$OUT_FILE"; then
+              echo ""
+              echo "FATAL: Shell/SSH Access is DISABLED on this HostGator account."
+              echo "cPanel → search 'SSH Access' / 'Gerenciar acesso SSH' → Enable."
+              echo "Then re-run this workflow."
+              exit 1
             fi
+            if [ "$RC" -eq 0 ]; then
+              CONNECTED=1
+              break
+            fi
+            echo "Port $PORT failed (exit $RC), trying next..."
+          done
 
-            echo "ENV DB (no password):"
-            grep -E '^(DB_CONNECTION|DB_HOST|DB_PORT|DB_DATABASE|DB_USERNAME)=' .env
+          if [ "$CONNECTED" -ne 1 ]; then
+            echo "FATAL: SSH failed on ports 22 and 2222"
+            exit 1
+          fi
 
-            test "$(grep '^DB_CONNECTION=' .env | cut -d= -f2)" = "mysql"
-            test "$(grep '^DB_DATABASE=' .env | cut -d= -f2)" = "luca9682_aura"
-
-            $PHP_BIN artisan config:clear
-            rm -f bootstrap/cache/config.php
-
-            echo "DB SHOW:"
-            $PHP_BIN artisan db:show || true
-
-            echo "MIGRATE:"
-            $PHP_BIN artisan migrate --force -vvv
-
-            echo "TABLES:"
-            $PHP_BIN artisan tinker --execute="echo implode(',', Illuminate\\Support\\Facades\\Schema::getTableListing());"
-
-            # Fail if essential tables missing
-            TABLES=$($PHP_BIN artisan tinker --execute="echo implode(',', Illuminate\\Support\\Facades\\Schema::getTableListing());")
-            echo "TABLES_RESULT=$TABLES"
-            echo "$TABLES" | grep -q migrations
-            echo "$TABLES" | grep -q users
-            echo "$TABLES" | grep -q sessions
-            echo "$TABLES" | grep -q cache
-
-            $PHP_BIN artisan config:cache
-            $PHP_BIN artisan route:cache || echo "route:cache skipped"
-            $PHP_BIN artisan view:cache || true
-
-            echo "DONE migrate OK"
+          if ! grep -q "DONE migrate OK" "$OUT_FILE"; then
+            echo "FATAL: remote script did not finish"
+            exit 1
+          fi

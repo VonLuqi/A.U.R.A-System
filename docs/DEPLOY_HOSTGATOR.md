@@ -25,14 +25,15 @@
 
 ### SSH obrigatório
 
-No cPanel → **SSH Access** / **Gerenciar chaves SSH** → **Enable** acesso SSH para `luca9682`.  
-Sem SSH, o step de extract falha — aí extraia manualmente no Terminal do cPanel:
+No cPanel, busque **SSH Access** / **Gerenciar acesso SSH** / **Manage Shell Access** → **Enable** para `luca9682`.
 
-```bash
-cd ~/aura
-tar -xzf vendor.tar.gz
-rm vendor.tar.gz
-```
+Se o log da Action mostrar `Shell access is not enabled on your account!`, o migrate/extract **não rodou** (a HostGator aceita o TCP e responde essa mensagem; workflows antigos marcavam verde à toa).
+
+Sem shell habilitado:
+- `vendor.tar.gz` não é extraído via SSH
+- `php artisan migrate` não cria tabelas → site 500 / DB vazia
+
+Depois de habilitar, rode **Migrate HostGator** (ou um novo deploy).
 
 ## Preparação única após 1º deploy
 

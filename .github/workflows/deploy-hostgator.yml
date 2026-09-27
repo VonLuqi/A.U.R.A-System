@@ -103,24 +103,48 @@ jobs:
           "
 
       - name: Extract vendor + migrate (SSH)
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          port: 22
-          command_timeout: 20m
-          script: |
+        env:
+          SSHPASS: ${{ secrets.FTP_PASSWORD }}
+          SSH_HOST: ${{ secrets.FTP_SERVER }}
+          SSH_USER: ${{ secrets.FTP_USERNAME }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq sshpass
+          SCRIPT=$(cat <<'EOF'
+          set -e
+          cd ~/aura || cd /home4/luca9682/aura
+          if [ -f vendor.tar.gz ]; then
+            tar -xzf vendor.tar.gz
+            rm -f vendor.tar.gz
+            echo "Vendor extracted OK"
+          fi
+          PHP_BIN=php
+          command -v ea-php82 >/dev/null 2>&1 && PHP_BIN=ea-php82
+          [ -x /opt/cpanel/ea-php82/root/usr/bin/php ] && PHP_BIN=/opt/cpanel/ea-php82/root/usr/bin/php
+          $PHP_BIN artisan --version
+          $PHP_BIN artisan migrate --force
+          $PHP_BIN artisan config:cache
+          $PHP_BIN artisan route:cache || true
+          $PHP_BIN artisan view:cache || true
+          echo "Migrate + cache OK"
+          EOF
+          )
+          OUT=$(mktemp)
+          OK=0
+          for PORT in 22 2222; do
+            set +e
+            sshpass -e ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no \
+              -p "$PORT" "${SSH_USER}@${SSH_HOST}" "bash -s" <<<"$SCRIPT" 2>&1 | tee "$OUT"
+            RC=${PIPESTATUS[0]}
             set -e
-            cd ~/aura || cd /home4/luca9682/aura
-            if [ -f vendor.tar.gz ]; then
-              tar -xzf vendor.tar.gz
-              rm -f vendor.tar.gz
-              echo "Vendor extracted OK"
+            if grep -qi "Shell access is not enabled" "$OUT"; then
+              echo "FATAL: enable SSH Access in cPanel, then re-run deploy/migrate."
+              exit 1
             fi
-            php artisan --version
-            php artisan migrate --force
-            php artisan config:cache
-            php artisan route:cache
-            php artisan view:cache
-            echo "Migrate + cache OK"
+            if [ "$RC" -eq 0 ] && grep -q "Migrate + cache OK" "$OUT"; then
+              OK=1
+              break
+            fi
+          done
+          test "$OK" -eq 1
