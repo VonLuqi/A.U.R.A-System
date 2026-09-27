@@ -1,6 +1,6 @@
 name: Migrate HostGator
 
-# Roda só migrate/cache no servidor (sem FTP completo).
+# Roda migrate/cache no servidor e exige tabelas MySQL reais.
 # Use quando o .env já está no servidor e o código já foi deployado.
 
 on:
@@ -19,101 +19,58 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           port: 22
           command_timeout: 10m
+          debug: true
+          script_stop: true
+          request_pty: true
           script: |
-            set -e
+            set -ex
+            echo "START migrate workflow"
             cd ~/aura || cd /home4/luca9682/aura
-            echo "=== cwd ==="
             pwd
-            ls -la artisan .env vendor/autoload.php database 2>&1 | head -30
-            ls -la database/*.sqlite 2>&1 || echo "(no sqlite files)"
+            ls -la artisan .env
+            test -d vendor
 
-            test -f .env
-            test -f artisan
-            test -d vendor || { echo "FATAL: vendor/ missing"; exit 1; }
+            PHP_BIN=php
+            command -v ea-php82 >/dev/null 2>&1 && PHP_BIN=ea-php82
+            command -v /opt/cpanel/ea-php82/root/usr/bin/php >/dev/null 2>&1 && PHP_BIN=/opt/cpanel/ea-php82/root/usr/bin/php
+            echo "PHP_BIN=$PHP_BIN"
+            $PHP_BIN -v | head -1
+            $PHP_BIN artisan --version
 
-            PHP_BIN=""
-            for c in ea-php82 php82 /opt/cpanel/ea-php82/root/usr/bin/php php; do
-              if command -v "$c" >/dev/null 2>&1; then PHP_BIN="$c"; break; fi
-              if [ -x "$c" ]; then PHP_BIN="$c"; break; fi
-            done
-            echo "Using PHP: $PHP_BIN"
-            "$PHP_BIN" -v | head -1
-
-            if grep -qE '^DB_PASSWORD=[^"].*[@#\$!]' .env 2>/dev/null; then
-              echo "Fixing unquoted DB_PASSWORD..."
+            # Quote DB_PASSWORD if needed
+            if grep -qE '^DB_PASSWORD=[^"].*[@#$!]' .env; then
+              echo "Quoting DB_PASSWORD"
               sed -i -E 's/^DB_PASSWORD=(.*)$/DB_PASSWORD="\1"/' .env
             fi
 
-            echo "=== .env DB lines (no password value) ==="
-            grep -E '^(DB_CONNECTION|DB_HOST|DB_PORT|DB_DATABASE|DB_USERNAME)=' .env || true
-            # Detect dangerous defaults
-            if grep -qE '^DB_CONNECTION=sqlite' .env; then
-              echo "FATAL: DB_CONNECTION=sqlite — phpMyAdmin MySQL will stay empty"
-              exit 1
-            fi
-            if ! grep -qE '^DB_DATABASE=luca9682_aura$' .env; then
-              echo "FATAL: DB_DATABASE must be exactly luca9682_aura"
-              grep '^DB_DATABASE=' .env || true
-              exit 1
-            fi
+            echo "ENV DB (no password):"
+            grep -E '^(DB_CONNECTION|DB_HOST|DB_PORT|DB_DATABASE|DB_USERNAME)=' .env
 
-            "$PHP_BIN" artisan config:clear || true
+            test "$(grep '^DB_CONNECTION=' .env | cut -d= -f2)" = "mysql"
+            test "$(grep '^DB_DATABASE=' .env | cut -d= -f2)" = "luca9682_aura"
+
+            $PHP_BIN artisan config:clear
             rm -f bootstrap/cache/config.php
 
-            echo "=== runtime connection ==="
-            "$PHP_BIN" -r '
-            require "vendor/autoload.php";
-            $app = require "bootstrap/app.php";
-            $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
-            $default = config("database.default");
-            $cfg = config("database.connections.$default");
-            echo "default=$default\n";
-            echo "driver=" . ($cfg["driver"] ?? "?") . "\n";
-            echo "host=" . ($cfg["host"] ?? "?") . "\n";
-            echo "database=" . ($cfg["database"] ?? "?") . "\n";
-            echo "username=" . ($cfg["username"] ?? "?") . "\n";
-            if (($cfg["driver"] ?? "") !== "mysql") {
-              fwrite(STDERR, "FATAL: runtime driver is not mysql\n");
-              exit(1);
-            }
-            if (($cfg["database"] ?? "") !== "luca9682_aura") {
-              fwrite(STDERR, "FATAL: runtime database is not luca9682_aura\n");
-              exit(1);
-            }
-            '
+            echo "DB SHOW:"
+            $PHP_BIN artisan db:show || true
 
-            echo "=== migrate --force ==="
-            "$PHP_BIN" artisan migrate --force -vvv
+            echo "MIGRATE:"
+            $PHP_BIN artisan migrate --force -vvv
 
-            echo "=== SHOW TABLES via MySQL ==="
-            "$PHP_BIN" -r '
-            require "vendor/autoload.php";
-            $app = require "bootstrap/app.php";
-            $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
-            $rows = Illuminate\Support\Facades\DB::select("SHOW TABLES");
-            $names = [];
-            foreach ($rows as $row) {
-              $names[] = array_values((array) $row)[0];
-            }
-            sort($names);
-            echo "tables=" . implode(",", $names) . "\n";
-            echo "count=" . count($names) . "\n";
-            if (count($names) < 1) {
-              fwrite(STDERR, "FATAL: MySQL SHOW TABLES returned 0\n");
-              exit(1);
-            }
-            $need = ["migrations", "users", "sessions", "cache"];
-            foreach ($need as $t) {
-              if (!in_array($t, $names, true)) {
-                fwrite(STDERR, "FATAL: missing table $t\n");
-                exit(1);
-              }
-            }
-            '
+            echo "TABLES:"
+            $PHP_BIN artisan tinker --execute="echo implode(',', Illuminate\\Support\\Facades\\Schema::getTableListing());"
 
-            echo "=== cache ==="
-            "$PHP_BIN" artisan config:cache
-            "$PHP_BIN" artisan route:cache || echo "WARN: route:cache failed"
-            "$PHP_BIN" artisan view:cache || true
+            # Fail if essential tables missing
+            TABLES=$($PHP_BIN artisan tinker --execute="echo implode(',', Illuminate\\Support\\Facades\\Schema::getTableListing());")
+            echo "TABLES_RESULT=$TABLES"
+            echo "$TABLES" | grep -q migrations
+            echo "$TABLES" | grep -q users
+            echo "$TABLES" | grep -q sessions
+            echo "$TABLES" | grep -q cache
 
-            echo "Migrate verified on MySQL luca9682_aura"
+            $PHP_BIN artisan config:cache
+            $PHP_BIN artisan route:cache || echo "route:cache skipped"
+            $PHP_BIN artisan view:cache || true
+
+            echo "DONE migrate OK"
