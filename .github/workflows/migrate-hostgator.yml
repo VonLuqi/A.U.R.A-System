@@ -57,7 +57,32 @@ jobs:
           echo "php=" . PHP_VERSION . "\\n";
 
           if (!is_file($root . '/vendor/autoload.php')) {
-              fail('vendor/autoload.php missing — unzip vendor.tar.gz in aura/ via FileZilla first');
+              $gz = $root . '/vendor.tar.gz';
+              if (!is_file($gz)) {
+                  fail('vendor/autoload.php missing AND vendor.tar.gz missing — run Deploy HostGator first');
+              }
+              echo "extracting vendor.tar.gz ...\\n";
+              try {
+                  if (!class_exists('PharData')) {
+                      fail('PharData unavailable on this host');
+                  }
+                  @unlink($root . '/vendor.tar');
+                  $phar = new PharData($gz);
+                  $phar->decompress();
+                  $tarFile = $root . '/vendor.tar';
+                  if (!is_file($tarFile)) {
+                      fail('decompress did not create vendor.tar');
+                  }
+                  $tar = new PharData($tarFile);
+                  $tar->extractTo($root, null, true);
+                  @unlink($tarFile);
+                  echo "vendor extracted OK\\n";
+              } catch (Throwable $e) {
+                  fail('vendor extract failed: ' . $e->getMessage());
+              }
+              if (!is_file($root . '/vendor/autoload.php')) {
+                  fail('extract ran but vendor/autoload.php still missing');
+              }
           }
           if (!is_file($root . '/.env')) {
               fail('.env missing in Laravel root');
@@ -143,7 +168,7 @@ jobs:
 
           echo "Running migrate over HTTPS..."
           RESP_FILE=$(mktemp)
-          HTTP_CODE=$(curl -sS -L --max-time 180 \
+          HTTP_CODE=$(curl -sS -L --max-time 300 \
             -o "$RESP_FILE" -w "%{http_code}" \
             "https://aura.vonluqi.com/__migrate_once.php?token=${TOKEN}" || echo "000")
           echo "HTTP_CODE=$HTTP_CODE"
