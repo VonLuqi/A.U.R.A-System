@@ -102,7 +102,7 @@ jobs:
             bye
           "
 
-      - name: Extract vendor on server (SSH)
+      - name: Extract vendor + migrate (SSH)
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.FTP_SERVER }}
@@ -113,7 +113,14 @@ jobs:
           script: |
             set -e
             cd ~/aura || cd /home4/luca9682/aura
-            tar -xzf vendor.tar.gz
-            rm -f vendor.tar.gz
-            php artisan --version || true
-            echo "Vendor extracted OK"
+            if [ -f vendor.tar.gz ]; then
+              tar -xzf vendor.tar.gz
+              rm -f vendor.tar.gz
+              echo "Vendor extracted OK"
+            fi
+            php artisan --version
+            php artisan migrate --force
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+            echo "Migrate + cache OK"
