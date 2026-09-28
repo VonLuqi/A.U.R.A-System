@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "626b9e7ddd47fb7eff9aaa53cce0c9ad",
+    "content-hash": "0db0d2580a70a739f50579e74fdd4ab6",
     "packages": [
         {
             "name": "brick/math",
@@ -139,6 +139,65 @@
                 }
             ],
             "time": "2026-09-06T14:11:38+00:00"
+        },
+        {
+            "name": "cihansenturk/ofxparser",
+            "version": "1.0.1",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/CihanSenturk/ofxparser.git",
+                "reference": "7707b4e5b5517fb4e905b122046efe555ceb2b65"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/CihanSenturk/ofxparser/zipball/7707b4e5b5517fb4e905b122046efe555ceb2b65",
+                "reference": "7707b4e5b5517fb4e905b122046efe555ceb2b65",
+                "shasum": ""
+            },
+            "require": {
+                "php": "^8.1"
+            },
+            "require-dev": {
+                "ergebnis/composer-normalize": "^2.13",
+                "phpunit/phpunit": "^9.5",
+                "squizlabs/php_codesniffer": "^3.7"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "CihanSenturk\\OfxParser\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Cihan Şentürk",
+                    "email": "cihansenturk96@gmail.com",
+                    "role": "Developer"
+                }
+            ],
+            "description": "Modern, secure, and type-safe OFX/QFX parser for PHP 8.1+ with comprehensive date format support and XXE protection",
+            "homepage": "https://github.com/CihanSenturk/ofxparser",
+            "keywords": [
+                "bank statement",
+                "finance",
+                "investment",
+                "ofx",
+                "open financial exchange",
+                "parser",
+                "php8",
+                "qfx",
+                "quicken",
+                "type-safe"
+            ],
+            "support": {
+                "issues": "https://github.com/CihanSenturk/ofxparser/issues",
+                "source": "https://github.com/CihanSenturk/ofxparser"
+            },
+            "time": "2026-06-09T12:18:23+00:00"
         },
         {
             "name": "dflydev/dot-access-data",

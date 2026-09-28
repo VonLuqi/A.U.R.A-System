@@ -1,0 +1,7 @@
+Data,Valor,Identificador,Descrição
+01/09/2026,"-1.234,56",id-ok-1,Compra milhar pt-BR
+02/09/2026,"89,90",id-ok-2,"Padaria, Café & Cia"
+03/09/2026,"-15,00"
+04/09/2026,"-20,00",id-ok-3,Linha válida após incompleta
+05/09/2026,"abc",id-bad,Valor inválido
+06/09/2026,"10,00",id-ok-4,Crédito final

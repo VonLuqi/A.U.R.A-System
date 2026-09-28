@@ -1,0 +1,82 @@
+OFXHEADER:100
+DATA:OFXSGML
+VERSION:102
+SECURITY:NONE
+ENCODING:UTF-8
+CHARSET:UTF-8
+COMPRESSION:NONE
+OLDFILEUID:NONE
+NEWFILEUID:NONE
+
+<OFX>
+  <SIGNONMSGSRSV1>
+    <SONRS>
+      <STATUS>
+        <CODE>0
+        <SEVERITY>INFO
+      </STATUS>
+      <DTSERVER>20260927120000
+      <LANGUAGE>POR
+      <FI>
+        <ORG>NUBANK
+        <FID>260
+      </FI>
+    </SONRS>
+  </SIGNONMSGSRSV1>
+  <BANKMSGSRSV1>
+    <STMTTRNRS>
+      <TRNUID>1
+      <STATUS>
+        <CODE>0
+        <SEVERITY>INFO
+      </STATUS>
+      <STMTRS>
+        <CURDEF>BRL
+        <BANKACCTFROM>
+          <BANKID>0260
+          <ACCTID>0001-ANON
+          <ACCTTYPE>CHECKING
+        </BANKACCTFROM>
+        <BANKTRANLIST>
+          <DTSTART>20260901
+          <DTEND>20260927
+          <STMTTRN>
+            <TRNTYPE>DEBIT
+            <DTPOSTED>20260901
+            <TRNAMT>-89.90
+            <FITID>nubank-fitid-001
+            <NAME>SUPERMERCADO EXTRA
+            <MEMO>Compra supermercado
+          </STMTTRN>
+          <STMTTRN>
+            <TRNTYPE>CREDIT
+            <DTPOSTED>20260902
+            <TRNAMT>1250.00
+            <FITID>nubank-fitid-002
+            <NAME>PAGAMENTO RECEBIDO
+            <MEMO>Transferencia recebida
+          </STMTTRN>
+          <STMTTRN>
+            <TRNTYPE>DEBIT
+            <DTPOSTED>20260903
+            <TRNAMT>-15.50
+            <FITID>nubank-fitid-003
+            <NAME>PADARIA CAFE
+          </STMTTRN>
+          <STMTTRN>
+            <TRNTYPE>OTHER
+            <DTPOSTED>20260904
+            <TRNAMT>0.00
+            <FITID>nubank-fitid-zero
+            <NAME>AJUSTE ZERO
+            <MEMO>Valor zero
+          </STMTTRN>
+        </BANKTRANLIST>
+        <LEDGERBAL>
+          <BALAMT>1000.00
+          <DTASOF>20260927
+        </LEDGERBAL>
+      </STMTRS>
+    </STMTTRNRS>
+  </BANKMSGSRSV1>
+</OFX>

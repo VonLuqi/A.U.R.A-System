@@ -33,8 +33,20 @@ return [
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app/private'),
-            'serve' => true,
+            // Disabled: statements live under this root; signed /storage/{path}
+            // must not be able to serve extratos (Etapa C §2.1).
+            'serve' => false,
             'throw' => false,
+            'report' => false,
+        ],
+
+        // Extratos bancários (Etapa C §2.1) — never expose via storage:link / public disk.
+        'statements' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/statements'),
+            'visibility' => 'private',
+            'serve' => false,
+            'throw' => true,
             'report' => false,
         ],
 

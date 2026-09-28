@@ -169,7 +169,8 @@ return [
     |
     */
 
-    'secure' => env('SESSION_SECURE_COOKIE'),
+    // Local/HTTP: false. Production HTTPS: SESSION_SECURE_COOKIE=true
+    'secure' => filter_var(env('SESSION_SECURE_COOKIE', false), FILTER_VALIDATE_BOOL),
 
     /*
     |--------------------------------------------------------------------------
@@ -182,7 +183,7 @@ return [
     |
     */
 
-    'http_only' => env('SESSION_HTTP_ONLY', true),
+    'http_only' => filter_var(env('SESSION_HTTP_ONLY', true), FILTER_VALIDATE_BOOL),
 
     /*
     |--------------------------------------------------------------------------
@@ -199,6 +200,7 @@ return [
     |
     */
 
+    // lax = same-origin SPA + Vite proxy (Etapa C / D)
     'same_site' => env('SESSION_SAME_SITE', 'lax'),
 
     /*

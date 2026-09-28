@@ -19,31 +19,37 @@
 
 ---
 
+
+
 ## Etapa B — Banco de Dados
 
-- [ ] Migration `users` (+ seeder do admin único).
-- [ ] Migration `categories` (seed opcional mínimo).
-- [ ] Migration `statement_imports`.
-- [ ] Migration `transactions` com índices (`occurred_on`, `type`, `unique_hash`, `category_id`).
-- [ ] Constraints de unicidade para deduplicação.
-- [ ] Factories/seeders de desenvolvimento (transações fake para UI).
+- [x] Migration `users` (+ seeder do admin único).
+- [x] Migration `categories` (seed opcional mínimo).
+- [x] Migration `statement_imports`.
+- [x] Migration `transactions` com índices (`occurred_on`, `type`, `unique_hash`, `category_id`).
+- [x] Constraints de unicidade para deduplicação.
+- [x] Factories/seeders de desenvolvimento (transações fake para UI).
 
 ---
+
+
 
 ## Etapa C — Backend / Auth / Parse
 
-- [ ] Autenticação session (login, logout, middleware `auth`).
-- [ ] Desabilitar/omitir registro público.
-- [ ] Rate limiting em `login` e `statements/upload`.
-- [ ] Service `StatementUploadService` (orquestração).
-- [ ] `NubankCsvParser` com testes unitários (fixtures reais anonimizadas).
-- [ ] `OfxParser` (ou adapter de lib) com testes.
-- [ ] Persistência atômica (import + transactions em transação DB).
-- [ ] Endpoint `POST` upload + resposta de resumo.
-- [ ] Endpoints de leitura: listagem filtrada, agregados do dashboard.
-- [ ] Storage privado e política de retenção simples dos arquivos.
+- [x] Autenticação session (login, logout, middleware `auth`).
+- [x] Desabilitar/omitir registro público.
+- [x] Rate limiting em `login` e `statements/upload`.
+- [x] Service `StatementUploadService` (orquestração).
+- [x] `NubankCsvParser` com testes unitários (fixtures reais anonimizadas).
+- [x] `OfxParser` (ou adapter de lib) com testes.
+- [x] Persistência atômica (import + transactions em transação DB).
+- [x] Endpoint `POST` upload + resposta de resumo.
+- [x] Endpoints de leitura: listagem filtrada, agregados do dashboard.
+- [x] Storage privado e política de retenção simples dos arquivos.
 
 ---
+
+
 
 ## Etapa D — Frontend
 
@@ -57,7 +63,9 @@
 
 ---
 
-## Etapa E — Deploy (HostGator / vonluqi.com)
+
+
+## Etapa E — Deploy (HostGator / aura.vonluqi.com)
 
 - [ ] Criar banco MySQL no cPanel e usuário com permissões mínimas.
 - [ ] Configurar `.env` de produção (`APP_URL=https://vonluqi.com`, `APP_DEBUG=false`).
@@ -70,6 +78,9 @@
 
 ---
 
+
+
 ## Ordem Sugerida de Entrega
 
 > **A (Setup)** → **B (DB)** → **C.Auth** → **C.Parse/Upload** → **C.APIs Dashboard** → **D (UI)** → **E (Deploy)**
+
