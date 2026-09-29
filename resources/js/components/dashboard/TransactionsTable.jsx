@@ -1,5 +1,6 @@
 ﻿import { ArrowDown, ArrowUp, ArrowUpDown, BookmarkPlus, Pencil, Trash2 } from 'lucide-react';
 import { formatDate, signedMoney } from '../../lib/format';
+import { cx } from '../../lib/cx';
 import Badge from '../ui/Badge';
 import Card from '../ui/Card';
 import EmptyState, { EMPTY_COPY } from '../ui/EmptyState';
@@ -23,22 +24,18 @@ function SortableHeader({ label, column, sort, direction, onSort, className = ''
     return (
         <th
             scope="col"
-            className={[
+            className={cx(
                 'sticky top-0 z-10 bg-surface px-4 py-3 text-left text-caption font-medium text-ink-secondary',
                 className,
-            ]
-                .filter(Boolean)
-                .join(' ')}
+            )}
         >
             <button
                 type="button"
-                className={[
+                className={cx(
                     'inline-flex items-center gap-1.5 rounded-sm transition',
                     'hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
-                    active ? 'text-ink' : '',
-                ]
-                    .filter(Boolean)
-                    .join(' ')}
+                    active && 'text-ink',
+                )}
                 onClick={() => onSort(column)}
                 aria-sort={active ? (direction === 'asc' ? 'ascending' : 'descending') : 'none'}
             >
@@ -76,7 +73,7 @@ function RowActions({
     const showRemember = canRememberAlias && typeof onRememberAlias === 'function';
 
     if (!showEdit && !showDelete && !showRemember) {
-        return <span className="text-ink-muted">—</span>;
+        return null;
     }
 
     return (
@@ -114,18 +111,63 @@ function IconAction({ label, onClick, children, tone = 'default' }) {
     return (
         <button
             type="button"
-            className={[
+            className={cx(
                 'inline-flex h-9 w-9 items-center justify-center rounded-full transition',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
                 tone === 'danger'
                     ? 'text-ink-secondary hover:bg-surface-raised hover:text-feedback-danger'
                     : 'text-ink-secondary hover:bg-surface-raised hover:text-ink',
-            ].join(' ')}
+            )}
             aria-label={label}
             title={label}
             onClick={onClick}
         >
             {children}
+        </button>
+    );
+}
+
+function MobileSortBar({ sort, direction, onSort }) {
+    return (
+        <div className="flex items-center gap-2 border-b border-border-subtle px-3 py-2 md:hidden">
+            <span className="text-small text-ink-muted">Ordenar</span>
+            <SortChip
+                label="Data"
+                column="occurred_on"
+                sort={sort}
+                direction={direction}
+                onSort={onSort}
+            />
+            <SortChip
+                label="Valor"
+                column="amount"
+                sort={sort}
+                direction={direction}
+                onSort={onSort}
+            />
+        </div>
+    );
+}
+
+function SortChip({ label, column, sort, direction, onSort }) {
+    const active = sort === column;
+    const Icon = !active ? ArrowUpDown : direction === 'asc' ? ArrowUp : ArrowDown;
+
+    return (
+        <button
+            type="button"
+            className={cx(
+                'inline-flex h-8 items-center gap-1 rounded-full px-3 text-caption font-medium transition',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
+                active
+                    ? 'bg-surface-inverse text-ink-on-inverse'
+                    : 'border border-border text-ink-secondary hover:bg-surface-raised hover:text-ink',
+            )}
+            onClick={() => onSort(column)}
+            aria-pressed={active}
+        >
+            {label}
+            <Icon size={12} strokeWidth={2} aria-hidden />
         </button>
     );
 }
@@ -147,6 +189,12 @@ function TableHeader({ sort, direction, onSort, showActions }) {
                     className="sticky top-0 z-10 bg-surface px-4 py-3 text-left text-caption font-medium text-ink-secondary"
                 >
                     Descrição
+                </th>
+                <th
+                    scope="col"
+                    className="sticky top-0 z-10 bg-surface px-4 py-3 text-left text-caption font-medium text-ink-secondary"
+                >
+                    Apelido
                 </th>
                 <th
                     scope="col"
@@ -178,6 +226,68 @@ function TableHeader({ sort, direction, onSort, showActions }) {
                 ) : null}
             </tr>
         </thead>
+    );
+}
+
+function MobileTransactionCard({
+    row,
+    showActions,
+    canRememberAlias,
+    onEdit,
+    onDelete,
+    onRememberAlias,
+}) {
+    const isCredit = row.type === 'credit';
+    const originalDescription = row.original_description || row.description || '';
+    const aliasName = row.alias?.display_name || null;
+    const title = aliasName || originalDescription || '—';
+    const subtitle = aliasName && originalDescription && aliasName !== originalDescription
+        ? originalDescription
+        : null;
+
+    return (
+        <li className="border-b border-border-subtle/60 px-3 py-3 last:border-b-0">
+            <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                    <p className="truncate text-body font-medium text-ink" title={title}>
+                        {title}
+                    </p>
+                    {subtitle ? (
+                        <p className="mt-0.5 truncate text-small text-ink-muted" title={subtitle}>
+                            {subtitle}
+                        </p>
+                    ) : null}
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        <span className="text-small text-ink-muted">
+                            {formatDate(row.occurred_on)}
+                        </span>
+                        <Badge tone={isCredit ? 'positive' : 'danger'}>
+                            {isCredit ? 'Entrada' : 'Saída'}
+                        </Badge>
+                        <CategoryCell category={row.category} />
+                    </div>
+                </div>
+                <p
+                    className={cx(
+                        'shrink-0 text-right text-body font-semibold tabular-nums',
+                        isCredit ? 'text-feedback-positive' : 'text-feedback-danger',
+                    )}
+                >
+                    {signedMoney(row.type, row.amount)}
+                </p>
+            </div>
+            {showActions ? (
+                <div className="mt-2 flex justify-end">
+                    <RowActions
+                        row={row}
+                        canRememberAlias={canRememberAlias}
+                        onEdit={onEdit}
+                        onDelete={onDelete}
+                        onRememberAlias={onRememberAlias}
+                    />
+                </div>
+            ) : null}
+        </li>
     );
 }
 
@@ -224,7 +334,7 @@ function TableEmptyState({
 }
 
 /**
- * TransactionsTable — Etapa D §4.7.1 / §4.7.3 / PLAN_EXPANSAO §8.2.
+ * TransactionsTable — cards no mobile, tabela no desktop.
  *
  * @param {{
  *   rows?: Array<object>,
@@ -306,7 +416,7 @@ export default function TransactionsTable({
 
     return (
         <Card
-            className={['overflow-hidden p-0', className].filter(Boolean).join(' ')}
+            className={cx('overflow-hidden p-0', className)}
             aria-busy={status === 'loading' || undefined}
         >
             {showEmpty ? (
@@ -316,69 +426,109 @@ export default function TransactionsTable({
                     looksEmptyAccount={looksEmptyAccount}
                 />
             ) : (
-                <div className="overflow-x-auto">
-                    <table className="min-w-[44rem] w-full border-collapse text-body text-ink">
-                        <TableHeader
-                            sort={sort}
-                            direction={direction}
-                            onSort={handleSort}
-                            showActions={showActions}
-                        />
-                        <tbody className={status === 'loading' ? 'opacity-60' : undefined}>
-                            {rows.map((row) => {
-                                const isCredit = row.type === 'credit';
+                <>
+                    <MobileSortBar sort={sort} direction={direction} onSort={handleSort} />
 
-                                return (
-                                    <tr
-                                        key={row.id}
-                                        className="border-b border-border-subtle/60 transition hover:bg-surface-raised"
-                                    >
-                                        <td className="whitespace-nowrap px-4 py-3 text-ink-secondary">
-                                            {formatDate(row.occurred_on)}
-                                        </td>
-                                        <td className="max-w-[16rem] px-4 py-3">
-                                            <span
-                                                className="block truncate"
-                                                title={row.description}
-                                            >
-                                                {row.description || '—'}
-                                            </span>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <CategoryCell category={row.category} />
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <Badge tone={isCredit ? 'positive' : 'danger'}>
-                                                {isCredit ? 'Entrada' : 'Saída'}
-                                            </Badge>
-                                        </td>
-                                        <td
-                                            className={[
-                                                'whitespace-nowrap px-4 py-3 text-right font-medium tabular-nums',
-                                                isCredit
-                                                    ? 'text-feedback-positive'
-                                                    : 'text-feedback-danger',
-                                            ].join(' ')}
+                    {/* Mobile cards — sem scroll horizontal */}
+                    <ul
+                        className={cx(
+                            'md:hidden',
+                            status === 'loading' && 'opacity-60',
+                        )}
+                    >
+                        {rows.map((row) => (
+                            <MobileTransactionCard
+                                key={row.id}
+                                row={row}
+                                showActions={showActions}
+                                canRememberAlias={canRememberAlias}
+                                onEdit={onEdit}
+                                onDelete={onDelete}
+                                onRememberAlias={onRememberAlias}
+                            />
+                        ))}
+                    </ul>
+
+                    {/* Desktop table */}
+                    <div className="hidden overflow-x-auto md:block">
+                        <table className="min-w-[52rem] w-full border-collapse text-body text-ink">
+                            <TableHeader
+                                sort={sort}
+                                direction={direction}
+                                onSort={handleSort}
+                                showActions={showActions}
+                            />
+                            <tbody className={status === 'loading' ? 'opacity-60' : undefined}>
+                                {rows.map((row) => {
+                                    const isCredit = row.type === 'credit';
+                                    const originalDescription =
+                                        row.original_description || row.description || '';
+                                    const aliasName = row.alias?.display_name || null;
+
+                                    return (
+                                        <tr
+                                            key={row.id}
+                                            className="border-b border-border-subtle/60 transition hover:bg-surface-raised"
                                         >
-                                            {signedMoney(row.type, row.amount)}
-                                        </td>
-                                        {showActions ? (
-                                            <td className="whitespace-nowrap px-3 py-2 text-right">
-                                                <RowActions
-                                                    row={row}
-                                                    canRememberAlias={canRememberAlias}
-                                                    onEdit={onEdit}
-                                                    onDelete={onDelete}
-                                                    onRememberAlias={onRememberAlias}
-                                                />
+                                            <td className="whitespace-nowrap px-4 py-3 text-ink-secondary">
+                                                {formatDate(row.occurred_on)}
                                             </td>
-                                        ) : null}
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
+                                            <td className="max-w-[14rem] px-4 py-3">
+                                                <span
+                                                    className="block truncate"
+                                                    title={originalDescription}
+                                                >
+                                                    {originalDescription || '—'}
+                                                </span>
+                                            </td>
+                                            <td className="max-w-[10rem] px-4 py-3">
+                                                {aliasName ? (
+                                                    <span
+                                                        className="block truncate text-ink"
+                                                        title={aliasName}
+                                                    >
+                                                        {aliasName}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-ink-muted">—</span>
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <CategoryCell category={row.category} />
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <Badge tone={isCredit ? 'positive' : 'danger'}>
+                                                    {isCredit ? 'Entrada' : 'Saída'}
+                                                </Badge>
+                                            </td>
+                                            <td
+                                                className={cx(
+                                                    'whitespace-nowrap px-4 py-3 text-right font-medium tabular-nums',
+                                                    isCredit
+                                                        ? 'text-feedback-positive'
+                                                        : 'text-feedback-danger',
+                                                )}
+                                            >
+                                                {signedMoney(row.type, row.amount)}
+                                            </td>
+                                            {showActions ? (
+                                                <td className="whitespace-nowrap px-3 py-2 text-right">
+                                                    <RowActions
+                                                        row={row}
+                                                        canRememberAlias={canRememberAlias}
+                                                        onEdit={onEdit}
+                                                        onDelete={onDelete}
+                                                        onRememberAlias={onRememberAlias}
+                                                    />
+                                                </td>
+                                            ) : null}
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </>
             )}
         </Card>
     );

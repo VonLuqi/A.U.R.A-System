@@ -1,11 +1,17 @@
 import { cx } from '../../lib/cx';
 
+const SIZE_CLASS = {
+    sm: 'h-1.5',
+    md: 'h-2',
+};
+
 /**
  * GoalProgressBar — barra de progresso (PLAN_EXPANSAO §8.5).
  *
  * @param {{
  *   percent?: number|null,
  *   tone?: 'brand'|'positive'|'danger',
+ *   size?: 'sm'|'md',
  *   className?: string,
  *   label?: string,
  * }} props
@@ -13,6 +19,7 @@ import { cx } from '../../lib/cx';
 export default function GoalProgressBar({
     percent = 0,
     tone = 'brand',
+    size = 'md',
     className = '',
     label,
 }) {
@@ -23,11 +30,15 @@ export default function GoalProgressBar({
             : tone === 'danger'
               ? 'bg-feedback-danger'
               : 'bg-brand';
+    const heightClass = SIZE_CLASS[size] ?? SIZE_CLASS.md;
 
     return (
         <div className={cx('flex flex-col gap-1.5', className)}>
             <div
-                className="h-2 w-full overflow-hidden rounded-full bg-surface-sunken"
+                className={cx(
+                    'w-full overflow-hidden rounded-full bg-surface-sunken',
+                    heightClass,
+                )}
                 role="progressbar"
                 aria-valuemin={0}
                 aria-valuemax={100}

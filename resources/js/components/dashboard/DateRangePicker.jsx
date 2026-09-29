@@ -353,7 +353,7 @@ export default function DateRangePicker({
     return (
         <div
             ref={rootRef}
-            className={cx('relative flex flex-nowrap items-center gap-2', className)}
+            className={cx('relative flex items-center gap-2', className || 'flex-nowrap')}
             role="group"
             aria-label="Período"
         >

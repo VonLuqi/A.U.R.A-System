@@ -18,7 +18,7 @@ const TYPE_OPTIONS = [
 export default function TypePills({ value = '', onChange, className = '' }) {
     return (
         <div
-            className={['flex flex-nowrap gap-2', className].filter(Boolean).join(' ')}
+            className={['flex items-center gap-2', className || 'flex-nowrap'].filter(Boolean).join(' ')}
             role="group"
             aria-label="Tipo de movimentação"
         >

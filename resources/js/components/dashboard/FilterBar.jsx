@@ -1,12 +1,26 @@
-﻿import CategorySelect from './CategorySelect';
+﻿import { useMemo, useState } from 'react';
+import { ListFilter } from 'lucide-react';
+import {
+    PERIOD_PRESET_IDS,
+    PERIOD_PRESET_LABELS,
+    formatRangeLabel,
+} from '../../lib/dates';
+import { cx } from '../../lib/cx';
+import Button from '../ui/Button';
+import Modal from '../ui/Modal';
+import CategorySelect from './CategorySelect';
 import DateRangePicker from './DateRangePicker';
 import SearchField from './SearchField';
 import TypePills from './TypePills';
-import { cx } from '../../lib/cx';
+
+const TYPE_LABELS = {
+    '': 'Todos',
+    credit: 'Entradas',
+    debit: 'Saídas',
+};
 
 /**
- * FilterBar — Etapa D §4.5.5 / §5.3.1 / §6.2 / PLAN_EXPANSAO §8.3.
- * Wrap responsivo; faixa de pills com scroll-X sutil no mobile.
+ * FilterBar — desktop: faixa inline; mobile: busca + ícone que abre modal.
  */
 export default function FilterBar({
     periodPreset,
@@ -26,12 +40,81 @@ export default function FilterBar({
     refreshing = false,
     className = '',
 }) {
+    const [filtersOpen, setFiltersOpen] = useState(false);
+
+    const selectedCategory = categories.find((c) => c.id === categoryId);
+    const periodLabel =
+        periodPreset === PERIOD_PRESET_IDS.custom
+            ? formatRangeLabel(from, to) || PERIOD_PRESET_LABELS.custom
+            : PERIOD_PRESET_LABELS[periodPreset] ?? 'Período';
+
+    const activeFilterCount = useMemo(() => {
+        let count = 0;
+        if (periodPreset && periodPreset !== PERIOD_PRESET_IDS.current_month) {
+            count += 1;
+        }
+        if (type) {
+            count += 1;
+        }
+        if (categoryId !== '' && categoryId != null) {
+            count += 1;
+        }
+        return count;
+    }, [periodPreset, type, categoryId]);
+
+    const summaryParts = [
+        periodLabel,
+        TYPE_LABELS[type] ?? 'Todos',
+        selectedCategory?.name ?? 'Todas as categorias',
+    ];
+
     return (
         <section
-            className={cx('flex flex-col gap-3', className)}
+            className={cx('flex flex-col gap-2', className)}
             aria-label="Filtros do dashboard"
         >
-            <div className="aura-scroll-x flex flex-nowrap items-center gap-x-3 gap-y-2 pb-1">
+            {/* Mobile: search + filter icon */}
+            <div className="flex items-center gap-2 sm:hidden">
+                <SearchField
+                    value={q}
+                    onChange={onSearchChange}
+                    className="min-w-0 flex-1"
+                />
+                <button
+                    type="button"
+                    className={cx(
+                        'relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border transition',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
+                        activeFilterCount > 0
+                            ? 'border-brand bg-brand/15 text-ink'
+                            : 'border-border bg-transparent text-ink hover:bg-surface-raised',
+                    )}
+                    aria-label="Abrir filtros"
+                    aria-haspopup="dialog"
+                    aria-expanded={filtersOpen}
+                    onClick={() => setFiltersOpen(true)}
+                >
+                    <ListFilter size={18} strokeWidth={1.75} aria-hidden />
+                    {activeFilterCount > 0 ? (
+                        <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-[10px] font-semibold text-ink-on-brand">
+                            {activeFilterCount}
+                        </span>
+                    ) : null}
+                </button>
+            </div>
+
+            {refreshing ? (
+                <span className="text-small text-ink-muted sm:hidden" aria-live="polite">
+                    Atualizando…
+                </span>
+            ) : null}
+
+            <p className="truncate text-caption text-ink-muted sm:hidden" title={summaryParts.join(' · ')}>
+                {summaryParts.join(' · ')}
+            </p>
+
+            {/* Desktop: inline bar */}
+            <div className="aura-scroll-x hidden flex-nowrap items-center gap-x-2 gap-y-2 pb-1 sm:flex">
                 <DateRangePicker
                     preset={periodPreset}
                     from={from}
@@ -46,6 +129,17 @@ export default function FilterBar({
                     onChange={onTypeChange}
                     className="shrink-0 flex-nowrap"
                 />
+                <CategorySelect
+                    categories={categories}
+                    value={categoryId}
+                    loading={categoriesLoading}
+                    onChange={onCategoryChange}
+                />
+                <SearchField
+                    value={q}
+                    onChange={onSearchChange}
+                    className="min-w-[11rem] max-w-[16rem] flex-1 sm:min-w-[14rem]"
+                />
                 {refreshing ? (
                     <span className="shrink-0 text-small text-ink-muted" aria-live="polite">
                         Atualizando…
@@ -53,20 +147,56 @@ export default function FilterBar({
                 ) : null}
             </div>
 
-            <div className="flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-start lg:gap-x-3 lg:gap-y-2">
-                <CategorySelect
-                    categories={categories}
-                    value={categoryId}
-                    loading={categoriesLoading}
-                    onChange={onCategoryChange}
-                    className="w-full min-w-0 lg:flex-1"
-                />
-                <SearchField
-                    value={q}
-                    onChange={onSearchChange}
-                    className="w-full lg:min-w-[12rem] lg:max-w-sm lg:flex-none"
-                />
-            </div>
+            <Modal
+                open={filtersOpen}
+                title="Filtros"
+                description="Período, tipo e categoria das movimentações."
+                onClose={() => setFiltersOpen(false)}
+                size="sm"
+                footer={(
+                    <Button
+                        type="button"
+                        variant="primary"
+                        size="sm"
+                        className="w-full sm:w-auto"
+                        onClick={() => setFiltersOpen(false)}
+                    >
+                        Aplicar
+                    </Button>
+                )}
+            >
+                <div className="flex flex-col gap-5">
+                    <div className="flex flex-col gap-2">
+                        <p className="text-caption font-medium text-ink-secondary">Período</p>
+                        <DateRangePicker
+                            preset={periodPreset}
+                            from={from}
+                            to={to}
+                            maxDays={maxDateRangeDays}
+                            onPresetChange={onPeriodChange}
+                            onCustomRange={onCustomRange}
+                            className="flex-wrap"
+                        />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                        <p className="text-caption font-medium text-ink-secondary">Tipo</p>
+                        <TypePills
+                            value={type}
+                            onChange={onTypeChange}
+                            className="flex-wrap"
+                        />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                        <p className="text-caption font-medium text-ink-secondary">Categoria</p>
+                        <CategorySelect
+                            categories={categories}
+                            value={categoryId}
+                            loading={categoriesLoading}
+                            onChange={onCategoryChange}
+                        />
+                    </div>
+                </div>
+            </Modal>
         </section>
     );
 }

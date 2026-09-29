@@ -20,7 +20,7 @@ export default function SearchField({
     const hasValue = value.length > 0;
 
     return (
-        <div className={['relative w-full max-w-sm', className].filter(Boolean).join(' ')}>
+        <div className={['relative w-full', className].filter(Boolean).join(' ')}>
             <label className="sr-only" htmlFor={id}>
                 Buscar na descrição
             </label>
