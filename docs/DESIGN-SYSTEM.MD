@@ -68,9 +68,9 @@
 | Token | Hex | Uso |
 | --- | --- | --- |
 | `color.feedback.neutral` | `#9A9C9B` | Deltas informativos (“+2 courses vs last month”) |
-| `color.feedback.positive` | `#A8E6C3` | Indicadores de crescimento positivo (quando aplicados) |
+| `color.feedback.positive` | `#A8E6C3` | Indicadores de crescimento positivo (quando aplicados); entradas / saldo positivo |
 | `color.feedback.warning` | — | Não observado nas referências |
-| `color.feedback.danger` | — | Não observado nas referências |
+| `color.feedback.danger` | `#F5A9A9` | Saídas, erros e estados destrutivos (Etapa D §0.6 — adição Aura; não havia no moodboard Skillway) |
 
 ---
 
@@ -158,6 +158,16 @@
 | `layout.card.padding` | `24px` | Padding padrão de card |
 | `layout.card.padding-sm` | `16px` | Padding de cards de lista / lesson items |
 | `layout.max-width` | fluido (dashboard full-bleed) | Conteúdo ocupa a viewport com gutters laterais |
+
+#### Breakpoints (Etapa D §6.1 — Tailwind default)
+
+| Nome | Largura | Comportamento |
+| --- | --- | --- |
+| mobile | `<640px` (`<sm`) | stack; nav hamburger; charts full width; tabela scroll-X |
+| tablet | `640–1023px` | cards 2×2; charts empilhados até `lg` |
+| desktop | `≥1024px` (`lg+`) | charts 2 col; layout §4.8; cards 4 col em `xl` (1280px) |
+
+Constantes JS: `resources/js/lib/breakpoints.js`.
 
 ---
 
@@ -358,15 +368,24 @@ Usado nos cards de curso para percentual concluído.
   --color-surface-default: #1C1E1D;
   --color-surface-raised: #2C2E2D;
   --color-surface-sunken: #101211;
+  --color-surface-inverse: #FCFDFC;
   --color-border-subtle: #2A2C2B;
   --color-border-default: #3A3C3B;
   --color-text-primary: #FCFDFC;
   --color-text-secondary: #9A9C9B;
   --color-text-muted: #6E706F;
   --color-text-on-brand: #151716;
+  --color-text-on-inverse: #151716;
+  --color-text-disabled: #525554;
+  --color-interactive-primary: #DCCFFF;
+  --color-interactive-inverse: #FCFDFC;
   --color-interactive-dark: #0A0B0A;
+  --color-overlay-scrim: rgba(21, 23, 22, 0.72);
   --color-brand-muted: rgba(220, 207, 255, 0.35);
+  --color-brand-glow: rgba(220, 207, 255, 0.06);
+  --color-feedback-neutral: #9A9C9B;
   --color-feedback-positive: #A8E6C3;
+  --color-feedback-danger: #F5A9A9;
 
   /* Typography */
   --font-sans: "Poppins", system-ui, sans-serif;
@@ -375,6 +394,7 @@ Usado nos cards de curso para percentual concluído.
   --text-h2: 1.375rem;
   --text-h3: 1.125rem;
   --text-body: 0.875rem;
+  --text-body-lg: 1rem;
   --text-caption: 0.75rem;
   --text-small: 0.6875rem;
 
@@ -394,5 +414,7 @@ Usado nos cards de curso para percentual concluído.
   --space-5: 20px;
   --space-6: 24px;
   --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
 }
 ```

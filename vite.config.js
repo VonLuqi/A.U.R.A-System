@@ -16,6 +16,9 @@ export default defineConfig({
         react(),
     ],
     server: {
+        // Windows: sem host fixo o Vite sobe em [::1] e o hot file
+        // aponta IPv6 — Simple Browser / 127.0.0.1:8000 não carrega JS/CSS (tela preta).
+        host: '127.0.0.1',
         watch: {
             ignored: ['**/storage/app/private/**'],
         },
@@ -26,5 +29,9 @@ export default defineConfig({
                 secure: false,
             },
         },
+    },
+    test: {
+        environment: 'node',
+        include: ['resources/js/**/*.{test,spec}.{js,jsx}'],
     },
 });

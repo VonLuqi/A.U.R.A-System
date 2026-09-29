@@ -1,6 +1,8 @@
 @import './fonts.css';
 @import './tokens.css';
 
+/* Etapa D §7.1 — Tailwind + Design System tokens */
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -27,25 +29,104 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-.app-shell {
-  padding: var(--space-8);
+/* Etapa D §5.3.1 — skeleton pulse (opacity), sem spinner genérico */
+@keyframes aura-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
 }
 
-.app-shell h1 {
-  font-size: var(--text-h1);
-  font-weight: 700;
-  margin: 0 0 var(--space-3);
-  color: var(--color-text-primary);
+.aura-skeleton {
+  animation: aura-skeleton-pulse 1.4s ease-in-out infinite;
+  background-color: var(--color-surface-raised);
 }
 
-.app-shell p {
-  color: var(--color-text-secondary);
-  margin: 0;
+@media (prefers-reduced-motion: reduce) {
+  .aura-skeleton {
+    animation: none;
+    opacity: 0.7;
+  }
+
+  .animate-spin,
+  .animate-pulse {
+    animation: none !important;
+  }
 }
 
-.app-shell .tagline {
-  font-size: var(--text-caption);
-  font-weight: 400;
-  color: var(--color-text-secondary);
-  margin-bottom: var(--space-4);
+/* Foco visível baseline (§5.5) para links/botões sem ring próprio */
+a:focus-visible,
+button:focus-visible,
+[role='button']:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--color-brand-primary);
+  outline-offset: 2px;
+}
+
+/* Etapa D §6.2 — scroll horizontal sutil (FilterBar pills) */
+.aura-scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-default) transparent;
+}
+
+.aura-scroll-x::-webkit-scrollbar {
+  height: 4px;
+}
+
+.aura-scroll-x::-webkit-scrollbar-thumb {
+  background: var(--color-border-default);
+  border-radius: var(--radius-full);
+}
+
+.aura-scroll-x::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Etapa D §5.3.3 — toasts sonner (tema Aura) */
+.aura-toast {
+  font-family: var(--font-sans) !important;
+  background: var(--color-surface-raised) !important;
+  color: var(--color-text-primary) !important;
+  border: 1px solid var(--color-border-subtle) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: none !important;
+}
+
+.aura-toast__title {
+  color: var(--color-text-primary) !important;
+  font-size: var(--text-body) !important;
+  font-weight: 500 !important;
+}
+
+.aura-toast__description {
+  color: var(--color-text-secondary) !important;
+  font-size: var(--text-caption) !important;
+}
+
+.aura-toast--success {
+  border-color: color-mix(in srgb, var(--color-feedback-positive) 45%, var(--color-border-subtle)) !important;
+}
+
+.aura-toast--success [data-icon] {
+  color: var(--color-feedback-positive) !important;
+}
+
+.aura-toast--error {
+  border-color: color-mix(in srgb, var(--color-feedback-danger) 45%, var(--color-border-subtle)) !important;
+}
+
+.aura-toast--error [data-icon] {
+  color: var(--color-feedback-danger) !important;
+}
+
+.aura-toast__close {
+  background: var(--color-surface-default) !important;
+  border: 1px solid var(--color-border-subtle) !important;
+  color: var(--color-text-secondary) !important;
 }

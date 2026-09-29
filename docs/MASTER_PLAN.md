@@ -2,8 +2,18 @@
 
 > **A.U.R.A.** — Assistente Unificado de Recursos e Análises  
 > *Aura: Inteligência invisível, controle absoluto.*  
-> Mapa de execução do MVP (**Laravel 11 + React + Vite** · HostGator · `vonluqi.com`).  
-> Fonte de contexto: `docs/context.md` · Design: `docs/DESIGN-SYSTEM.MD`.
+> Mapa de execução do MVP (**Laravel 11 + React 19 + Vite 6** · HostGator · `aura.vonluqi.com`).  
+> Fonte de contexto: `docs/context.md` · Design: `docs/DESIGN-SYSTEM.MD` · Setup: `README.md`.
+
+**Status do MVP**
+
+| Etapa | Nome | Status |
+| --- | --- | --- |
+| **A** | Setup | Concluída |
+| **B** | Banco de Dados | Concluída |
+| **C** | Backend / Auth / Parse | Concluída — `docs/PLAN_ETAPA_C.md` |
+| **D** | Frontend | Concluída — `docs/PLAN_ETAPA_D.md` (DoD §9) |
+| **E** | Deploy HostGator | Concluída — `docs/PLAN_ETAPA_E.md` (DoD §9) · `docs/DEPLOY_HOSTGATOR.md` |
 
 ---
 
@@ -19,8 +29,6 @@
 
 ---
 
-
-
 ## Etapa B — Banco de Dados
 
 - [x] Migration `users` (+ seeder do admin único).
@@ -31,8 +39,6 @@
 - [x] Factories/seeders de desenvolvimento (transações fake para UI).
 
 ---
-
-
 
 ## Etapa C — Backend / Auth / Parse
 
@@ -49,38 +55,37 @@
 
 ---
 
-
-
 ## Etapa D — Frontend
 
-- [ ] Tela de Login (brand **Aura** + tagline *Inteligência invisível, controle absoluto.* + Design System).
-- [ ] Layout autenticado (nav, shell dark).
-- [ ] Página de Upload (drag-and-drop, feedback de sucesso/erro/resumo).
-- [ ] Dashboard: metric cards, filtros (pills), tabela, gráficos.
-- [ ] Estados: loading, empty, error.
-- [ ] Integração com API autenticada (cookies/CSRF conforme stack).
-- [ ] Responsividade básica.
+> DoD: `docs/PLAN_ETAPA_D.md` §9 — SPA Login / Shell / Upload / Dashboard + Axios session/CSRF + responsividade. README raiz atualizado.
+
+- [x] Tela de Login (brand **Aura** + tagline *Inteligência invisível, controle absoluto.* + Design System).
+- [x] Layout autenticado (nav, shell dark).
+- [x] Página de Upload (drag-and-drop, feedback de sucesso/erro/resumo).
+- [x] Dashboard: metric cards, filtros (pills), tabela, gráficos.
+- [x] Estados: loading, empty, error.
+- [x] Integração com API autenticada (cookies/CSRF conforme stack).
+- [x] Responsividade básica.
 
 ---
-
-
 
 ## Etapa E — Deploy (HostGator / aura.vonluqi.com)
 
-- [ ] Criar banco MySQL no cPanel e usuário com permissões mínimas.
-- [ ] Configurar `.env` de produção (`APP_URL=https://vonluqi.com`, `APP_DEBUG=false`).
-- [ ] Apontar domínio / subdomínio para `public/`.
-- [ ] Instalar dependências (`composer install --no-dev`, `npm ci && npm run build`).
-- [ ] Rodar migrations + seeder do admin.
-- [ ] Garantir permissões em `storage/` e `bootstrap/cache/`.
-- [ ] Validar HTTPS, login, upload Nubank e dashboard em produção.
-- [ ] Backup inicial do banco e checklist de rollback.
+> Guia: `docs/DEPLOY_HOSTGATOR.md` · template: `.env.production.example`.  
+> DoD: `docs/PLAN_ETAPA_E.md` §9 — HostGator Cenário A + CI FTP + SSL + migrate/seed + cron + validação live.
+
+- [x] Criar banco MySQL no cPanel e usuário com permissões mínimas.
+- [x] Configurar `.env` de produção (`APP_URL=https://aura.vonluqi.com`, `APP_DEBUG=false`, `SESSION_SECURE_COOKIE=true`).
+- [x] Apontar subdomínio `aura.vonluqi.com` para `…/aura/public` (nunca a raiz do Laravel).
+- [x] Instalar dependências (`composer install --no-dev`, `npm ci && npm run build`).
+- [x] Rodar migrations + seeder do admin (`ADMIN_EMAIL` / `ADMIN_PASSWORD` fortes).
+- [x] Garantir permissões em `storage/` e `bootstrap/cache/`.
+- [x] Configurar cron cPanel: `* * * * * php …/artisan schedule:run` (purge de extratos).
+- [x] Validar HTTPS, login, upload Nubank e dashboard em produção.
+- [x] Backup inicial do banco e checklist de rollback.
 
 ---
 
-
-
 ## Ordem Sugerida de Entrega
 
-> **A (Setup)** → **B (DB)** → **C.Auth** → **C.Parse/Upload** → **C.APIs Dashboard** → **D (UI)** → **E (Deploy)**
-
+> **A (Setup)** → **B (DB)** → **C.Auth** → **C.Parse/Upload** → **C.APIs Dashboard** → **D (UI)** ✅ → **E (Deploy)** ✅

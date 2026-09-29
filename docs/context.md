@@ -3,6 +3,9 @@
 > **Fonte da verdade** para decisões de produto, arquitetura e implementação.
 > Qualquer agente de IA ou desenvolvedor deve consultar este arquivo antes de propor ou alterar código.
 > Atualize este documento quando escopo, stack ou restrições mudarem.
+>
+> **Status MVP (2026-09-29):** Etapas **A–E concluídas** (MVP HostGator live em `https://aura.vonluqi.com`).  
+> Planos: `docs/PLAN_ETAPA_C.md` · `docs/PLAN_ETAPA_D.md` · `docs/PLAN_ETAPA_E.md` · Roadmap: `docs/MASTER_PLAN.md` · Deploy: `docs/DEPLOY_HOSTGATOR.md` · Setup: `README.md`.
 
 ---
 
@@ -109,21 +112,24 @@ Plataforma web de **controle financeiro pessoal** orientada a inteligência e au
 
 
 
-### 2.2 Stack recomendada (MVP)
+### 2.2 Stack do MVP (confirmada)
 
-> Placeholders marcados com `[CONFIRMAR]` podem ser trocados; a recomendação abaixo é a default para HostGator tradicional.
+> Stack fechada nas Etapas A–D. Alterações exigem registro aqui + `docs/MASTER_PLAN.md` + `README.md`.
 
 
 | Camada             | Tecnologia                                                                     | Notas                                                       |
 | ------------------ | ------------------------------------------------------------------------------ | ----------------------------------------------------------- |
-| Linguagem backend  | **PHP 8.2+** `[CONFIRMAR]`                                                     | Compatível com HostGator                                    |
-| Framework backend  | **Laravel 11** `[CONFIRMAR]`                                                   | Auth, validação, filas sync, Eloquent, storage              |
+| Linguagem backend  | **PHP 8.2+**                                                                   | Compatível com HostGator                                    |
+| Framework backend  | **Laravel 11**                                                                 | Auth, validação, filas sync, Eloquent, storage              |
 | Banco de dados     | **MySQL 8 / MariaDB**                                                          | Padrão cPanel                                               |
 | Autenticação       | Session cookie (Laravel Auth, **sem Sanctum/Breeze**)                          | Single-admin; API sob `/api` com middleware `web` (Opção A) |
-| Frontend           | **React 18 + Vite** `[CONFIRMAR]`                                              | SPA consumindo API JSON do Laravel; tokens do Design System |
-| Estilo             | CSS variables + CSS Modules / Tailwind `[CONFIRMAR]`                           | Tokens espelhando `docs/DESIGN-SYSTEM.MD`                   |
+| Frontend           | **React 19 + Vite 6**                                                          | SPA Blade `#app`; API JSON; tokens do Design System         |
+| Roteamento client  | **react-router-dom 7**                                                         | `/login`, `/dashboard`, `/upload`; catch-all Laravel        |
+| Estilo             | **CSS variables (`tokens.css`) + Tailwind 3**                                  | Bridge em `tailwind.config.js`; dark only `#151716`       |
+| HTTP client        | **Axios** (`withCredentials` + CSRF)                                           | Sem Sanctum; `resources/js/api/*`                           |
+| Gráficos / Upload / Toasts / Ícones | **recharts** · **react-dropzone** · **sonner** · **lucide-react** | Deps MVP Etapa D; sem React Query / MUI / Chart.js |
+| Testes front (smoke) | **Vitest** (`npm test`)                                                      | `formatMoney` / `isAllowedStatementFile`                    |
 | Parse de extratos  | Parser próprio (CSV Nubank) + **`cihansenturk/ofxparser` ^1.0** (fork mantido PHP 8.1+ de `asgrim/ofxparser`; escolhido em 2026-09-28 — `asgrim/ofxparser` abandoned / incompatível PHP 8.2) | Endpoint dedicado e autenticado |
-
 | Storage de uploads | Disco **`statements`** → `storage/app/private/statements` (privado) | Nunca `public` disk / nunca symlink de `private` |
 | Limite upload MVP | **10 MB** (`max:10240` KB) via `UploadStatementRequest` | Conservador vs PHP ini local 20M / HostGator |
 | Extensões aceitas | `csv`, `ofx`, **`qfx`** (QFX = OFX-like → parser OFX) | MIME: `csv,txt,ofx,xml` + check de extensão |
@@ -143,19 +149,27 @@ Plataforma web de **controle financeiro pessoal** orientada a inteligência e au
 
 
 
-### 2.4 Estrutura de pastas sugerida (alto nível)
+### 2.4 Estrutura de pastas (alto nível)
 
 ```text
 /
-├── context.md                 ← este arquivo
+├── README.md                  ← setup local + visão do repositório
 ├── docs/
-│   └── DESIGN-SYSTEM.MD
+│   ├── context.md             ← este arquivo (fonte da verdade)
+│   ├── MASTER_PLAN.md
+│   ├── DESIGN-SYSTEM.MD
+│   ├── PLAN_ETAPA_*.md
+│   └── DEPLOY_HOSTGATOR.md
 ├── app/                       ← Laravel (Models, Http, Services, Parsers)
-├── database/migrations/
+├── database/migrations|seeders|factories/
 ├── routes/web.php | api.php
-├── resources/js/              ← React (Dashboard, Auth, Upload)
-├── storage/app/private/
-└── public/                    ← document root no HostGator
+├── resources/
+│   ├── css/                   ← tokens.css, fonts.css, app.css
+│   ├── js/                    ← SPA React (api/, components/, pages/, hooks/)
+│   └── views/app.blade.php    ← shell #app
+├── storage/app/private/statements/
+├── tests/                     ← PHPUnit + Fixtures
+└── public/                    ← document root no HostGator (+ build Vite)
 ```
 
 
@@ -224,6 +238,45 @@ Plataforma web de **controle financeiro pessoal** orientada a inteligência e au
 | Disk `statements` | `config/filesystems.php` → `storage/app/private/statements`, `visibility=private`, `throw=true`, `serve=false` | Extratos fora do web root; `local.serve=false` para não expor via `/storage/{path}` assinado |
 | Upload validation | max 10 MB; extensões `csv\|ofx\|qfx`; `.qfx` → format `ofx` | `UploadStatementRequest`; HostGator/PHP ini tipicamente ≥ 20M |
 | Retenção de extratos | **90 dias**; coluna `purged_at`; command `statements:purge-files` diário 03:15 | Opção B (auditoria); cron HostGator: `* * * * * php .../artisan schedule:run` |
+
+
+**Decisões Etapa D**
+
+
+| Decisão | Valor | Motivo |
+| --- | --- | --- |
+| Tipo de app | SPA React em Blade (`resources/views/app.blade.php` + `#app`) via Vite | Same-origin com Laravel; HostGator serve só `public/` |
+| Entry | `resources/js/app.jsx` → `createRoot` | Padrão Laravel + React já na Etapa A |
+| Roteamento | `react-router-dom` (BrowserRouter) | Rotas client `/login`, `/dashboard`, `/upload`; API fica em `/api/*` |
+| Estilo | CSS variables (`tokens.css`) + Tailwind 3 + CSS Modules opcional | Espelha `docs/DESIGN-SYSTEM.MD`; dark only `#151716` |
+| Fonte | Poppins (`resources/css/fonts.css`) | Design System §2 |
+| Estado servidor | Context + hooks (React Query fora do MVP default) | Superfície pequena; evita deps extras |
+| Estado UI | `useState` + AuthContext + filtros (Context ou URL) | Simples e alinhado ao single-admin |
+| HTTP | Axios (`resources/js/api/client.js` + `bootstrap.js`) — **sem** Sanctum | Session cookie + CSRF já definidos na Etapa C |
+| Toasts | `sonner` | Leve; themável com tokens Aura |
+| Upload DnD | `react-dropzone` | Validação de extensão/tamanho no client; parse só no server |
+| Gráficos | `recharts` | SVG themável; preferido a Chart.js no MVP |
+| Ícones | `lucide-react` (outline) | Alinhado a `DESIGN-SYSTEM.MD` §4.5 |
+| Datas/moeda | `resources/js/lib/format.js` (`Intl` pt-BR) | API envia money como string; TZ conceitual `America/Sao_Paulo` |
+| Auth mecanismo | Session cookie Laravel (`web` guard) | Espelho Etapa C Opção A; same-origin / Vite proxy |
+| CSRF SPA | `GET /api/csrf-cookie` → `XSRF-TOKEN` / `X-XSRF-TOKEN` via Axios | Sem Sanctum; `api/auth.js` → `ensureCsrf()` |
+| Credentials | `withCredentials: true` (`api/client.js`) | Envia cookie de sessão nas chamadas `/api/*` |
+| Sanctum | **Não usado** | Decisão Etapa C mantida |
+| Registro UI | **Proibido** — zero tela/rota de register | Single-admin; só `AdminUserSeeder` |
+| 401 no client | Interceptor Axios → `setUnauthorizedHandler` → limpar user + `/login` | Exceto `POST /api/login` e `GET /api/user` (guest bootstrap) |
+| Guest em `/login` | Se sessão válida (`GET /api/user` 200) → redirect `/dashboard` | Implementação UI: `GuestRoute` (§1.2.3) |
+| Rotas SPA (client) | `/login` (guest), `/` → redirect, `/dashboard` + `/upload` (auth), `*` → NotFound | `react-router-dom`; Laravel catch-all serve Blade; **sem** rotas `/api` no React |
+| Deps frontend MVP | `react-router-dom`, `recharts`, `react-dropzone`, `lucide-react`, `sonner` (+ `axios`/`react`/`tailwind` Etapa A) | Instaladas na Etapa D §0.5; **sem** React Query, Redux, Zustand, MUI, Chakra, Ant, Chart.js |
+| Tokens UI | Só `DESIGN-SYSTEM.MD` / `tokens.css` via Tailwind theme bridge | Sem hex solto nos componentes (exceto mapeamento recharts → vars) |
+| Feedback danger | `#F5A9A9` → `--color-feedback-danger` | Adição Aura §0.6 (moodboard não tinha danger); saídas/erros |
+| Copy UI | Tom preciso, calmo, premium; wordmark Aura hero + tagline de apoio | Sem jargão técnico (“pipeline”, “ML”, “parser”) |
+| Upload UX (objetivo) | Admin envia CSV/OFX/QFX (Nubank) → resumo (importadas/puladas/erros) ou erro claro | Sem jargão; parse só no server; DnD + feedback na §3 |
+| Dashboard UX | Cards + filtros pills + gráficos + tabela paginada, **mesmos filtros** (URL sync) | Coerência cards↔charts↔tabela; `useDashboardFilters` + APIs analytics/transactions |
+| Filtros URL | `from`, `to`, `type`, `category_id`, `q`, `page`, `sort`, `direction` em searchParams | Shareable / refresh-safe |
+| Dev same-origin | `php artisan serve` + `npm run dev` (Vite HMR); proxy `/api` se origem `:5173` | Cookies/CSRF estáveis |
+| Smoke front | Vitest — `resources/js/lib/format.test.js` + `validators.test.js` | Opcional DoD; `npm test` |
+| DoD Etapa D | Concluído (`PLAN_ETAPA_D.md` §9) | — |
+| DoD Etapa E | Concluído (`PLAN_ETAPA_E.md` §9) · runbook `DEPLOY_HOSTGATOR.md` | Residual: cookie `Secure` + registro backup §8.1 |
 
 
 Variáveis adicionais presentes em `.env.example` (locale, mail log, Redis opcional, AWS placeholders) seguem defaults Laravel; não são críticas ao MVP HostGator e podem permanecer como no template.
@@ -363,9 +416,9 @@ Teste de contrato: `tests/Feature/HttpErrorContractTest.php`.
 **Critérios de aceite**
 
 - [x] APIs de leitura coerentes: `GET /api/transactions` (filtros + paginação) e `GET /api/analytics/dashboard` (cards/series/by_category) — Etapa C.
-- [ ] Filtros atualizam cards, lista e gráficos na UI de forma coerente (Etapa D).
+- [x] Filtros atualizam cards, lista e gráficos na UI de forma coerente (Etapa D).
 - [x] Performance aceitável no backend com volume típico (agregações SQL + índices Etapa B).
-- [ ] Layout responsivo (desktop prioritário; mobile utilizável) — Etapa D.
+- [x] Layout responsivo (desktop prioritário; mobile utilizável) — Etapa D.
 
 ---
 
@@ -415,33 +468,36 @@ Checklist técnico do MVP. Marque itens conforme forem concluídos.
 
 ### Etapa D — Frontend
 
-- [ ] Tela de Login (brand **Aura** + tagline + Design System).
-- [ ] Layout autenticado (nav, shell dark).
-- [ ] Página de Upload (drag-and-drop, feedback de sucesso/erro/resumo).
-- [ ] Dashboard: metric cards, filtros (pills), tabela, gráficos.
-- [ ] Estados: loading, empty, error.
-- [ ] Integração com API autenticada (cookies/CSRF conforme stack).
-- [ ] Responsividade básica.
+> Concluída — detalhes e DoD em `docs/PLAN_ETAPA_D.md`.
+
+- [x] Tela de Login (brand **Aura** + tagline + Design System).
+- [x] Layout autenticado (nav, shell dark).
+- [x] Página de Upload (drag-and-drop, feedback de sucesso/erro/resumo).
+- [x] Dashboard: metric cards, filtros (pills), tabela, gráficos.
+- [x] Estados: loading, empty, error.
+- [x] Integração com API autenticada (cookies/CSRF conforme stack).
+- [x] Responsividade básica.
 
 
 
-### Etapa E — Deploy (HostGator / vonluqi.com)
+### Etapa E — Deploy (HostGator / aura.vonluqi.com)
 
-- [ ] Criar banco MySQL no cPanel e usuário com permissões mínimas.
-- [ ] Configurar `.env` de produção (`APP_URL=https://vonluqi.com`, `APP_DEBUG=false`).
-- [ ] Apontar domínio / subdomínio para `public/`.
-- [ ] Instalar dependências (`composer install --no-dev`, `npm ci && npm run build`).
-- [ ] Rodar migrations + seeder do admin.
-- [ ] Garantir permissões em `storage/` e `bootstrap/cache/`.
-- [ ] Validar HTTPS, login, upload Nubank e dashboard em produção.
-- [ ] Backup inicial do banco e checklist de rollback.
+> **Concluída** (`PLAN_ETAPA_E.md` §9). Guia: `docs/DEPLOY_HOSTGATOR.md` · template: `.env.production.example`.
 
-
+- [x] Criar banco MySQL no cPanel e usuário com permissões mínimas.
+- [x] Configurar `.env` de produção (`APP_URL=https://aura.vonluqi.com`, `APP_DEBUG=false`, `SESSION_SECURE_COOKIE=true`).
+- [x] Apontar subdomínio `aura.vonluqi.com` para `…/aura/public` (nunca a raiz do Laravel).
+- [x] Instalar dependências (`composer install --no-dev`, `npm ci && npm run build`).
+- [x] Rodar migrations + seeder do admin (`ADMIN_EMAIL` / `ADMIN_PASSWORD` fortes).
+- [x] Garantir permissões em `storage/` e `bootstrap/cache/`.
+- [x] Configurar cron cPanel: `* * * * * php …/artisan schedule:run`.
+- [x] Validar HTTPS, login, upload Nubank e dashboard em produção.
+- [x] Backup inicial do banco e checklist de rollback.
 
 ### Ordem sugerida de entrega
 
 ```text
-A (Setup) → B (DB) → C.Auth → C.Parse/Upload → C.APIs Dashboard → D (UI) → E (Deploy)
+A (Setup) → B (DB) → C.Auth → C.Parse/Upload → C.APIs Dashboard → D (UI) ✅ → E (Deploy) ✅
 ```
 
 ---
@@ -450,12 +506,13 @@ A (Setup) → B (DB) → C.Auth → C.Parse/Upload → C.APIs Dashboard → D (U
 
 ## 5. Convenções para a IA (obrigatório)
 
-1. Ler este `context.md` e `docs/DESIGN-SYSTEM.MD` antes de implementar UI ou novas features.
-2. Não introduzir multi-usuário, OAuth social ou Open Banking no MVP sem atualizar este documento.
+1. Ler este `context.md`, `docs/DESIGN-SYSTEM.MD` e `README.md` antes de implementar UI ou novas features.
+2. Não introduzir multi-usuário, OAuth social, Sanctum ou Open Banking no MVP sem atualizar este documento.
 3. Não expor uploads ou `.env` publicamente.
-4. Preferir mudanças pequenas e testáveis; parsers devem ter fixtures e testes.
-5. Ao concluir uma etapa do roadmap, atualizar os checkboxes deste arquivo.
-6. Stack default = **Laravel + MySQL + React/Vite** em HostGator; qualquer troca deve ser registrada na seção 2.2 com data/motivo.
+4. Preferir mudanças pequenas e testáveis; parsers devem ter fixtures e testes; smoke front via Vitest quando fizer sentido.
+5. Ao concluir uma etapa do roadmap, atualizar os checkboxes **deste arquivo** e de `docs/MASTER_PLAN.md`.
+6. Stack default = **Laravel 11 + MySQL + React 19 / Vite 6** em HostGator; qualquer troca deve ser registrada na seção 2.2 com data/motivo.
+7. Etapas D e E estão **fechadas**; mudanças de UI/API devem preservar contratos da Etapa C (`PLAN_ETAPA_C` / §3), o Design System e o runbook HostGator.
 
 ---
 
