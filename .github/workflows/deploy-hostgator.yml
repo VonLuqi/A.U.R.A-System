@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      force_vendor:
+        description: "Reenviar vendor.tar.gz mesmo sem mudança em composer.lock"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: deploy-hostgator
@@ -17,8 +23,33 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Decide if vendor must be rebuilt
+        id: vendor
+        env:
+          FORCE_VENDOR: ${{ inputs.force_vendor || false }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          NEED=false
+          if [ "${FORCE_VENDOR}" = "true" ]; then
+            NEED=true
+            echo "force_vendor=true"
+          elif [ -z "${BEFORE}" ] || [ "${BEFORE}" = "0000000000000000000000000000000000000000" ]; then
+            NEED=true
+            echo "no usable before SHA — pack vendor"
+          elif git diff --name-only "${BEFORE}" "${GITHUB_SHA}" | grep -qE '^(composer\.lock|composer\.json)$'; then
+            NEED=true
+            echo "composer.lock/json changed — pack vendor"
+          else
+            echo "composer.lock unchanged — skip vendor pack/upload"
+          fi
+          echo "needed=${NEED}" >> "$GITHUB_OUTPUT"
 
       - name: Setup PHP
+        if: steps.vendor.outputs.needed == 'true'
         uses: shivammathur/setup-php@v2
         with:
           php-version: "8.2"
@@ -33,6 +64,7 @@ jobs:
           cache: npm
 
       - name: Install PHP dependencies
+        if: steps.vendor.outputs.needed == 'true'
         run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 
       - name: Install Node dependencies
@@ -42,9 +74,10 @@ jobs:
         run: npm run build
 
       - name: Pack vendor (single archive — FTP file-by-file is too slow)
+        if: steps.vendor.outputs.needed == 'true'
         run: tar -czf vendor.tar.gz vendor
 
-      - name: Deploy app via FTP (without vendor/)
+      - name: Deploy app via FTP (without vendor/ / frontend source)
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_SERVER }}
@@ -74,6 +107,15 @@ jobs:
             **/.editorconfig
             **/README.md
             **/.phpunit.result.cache
+            **/package.json
+            **/package-lock.json
+            **/vite.config.js
+            **/tailwind.config.js
+            **/postcss.config.js
+            **/vitest.config.*
+            **/resources/js/**
+            **/resources/css/**
+            **/database/factories/**
             **/storage/logs/**
             **/storage/framework/cache/data/**
             **/storage/framework/sessions/**
@@ -83,6 +125,7 @@ jobs:
             **/Thumbs.db
 
       - name: Upload vendor.tar.gz via FTP
+        if: steps.vendor.outputs.needed == 'true'
         env:
           FTP_SERVER: ${{ secrets.FTP_SERVER }}
           FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
@@ -102,7 +145,9 @@ jobs:
             bye
           "
 
-      - name: Extract vendor + migrate (SSH)
+      - name: Extract vendor + migrate (SSH) — optional
+        id: ssh
+        continue-on-error: true
         env:
           SSHPASS: ${{ secrets.FTP_PASSWORD }}
           SSH_HOST: ${{ secrets.FTP_SERVER }}
@@ -124,7 +169,6 @@ jobs:
           [ -x /opt/cpanel/ea-php82/root/usr/bin/php ] && PHP_BIN=/opt/cpanel/ea-php82/root/usr/bin/php
           $PHP_BIN artisan --version
           $PHP_BIN artisan migrate --force
-          # Expansão F/G (§9.3): backfill idempotente + cotas (nunca DatabaseSeeder completo)
           $PHP_BIN artisan aura:backfill-transaction-user-id || true
           $PHP_BIN artisan db:seed --class=Database\\Seeders\\RoleLimitsSeeder --force
           $PHP_BIN artisan config:cache
@@ -142,8 +186,8 @@ jobs:
             RC=${PIPESTATUS[0]}
             set -e
             if grep -qi "Shell access is not enabled" "$OUT"; then
-              echo "FATAL: enable SSH Access in cPanel, then re-run deploy/migrate."
-              exit 1
+              echo "SSH shell disabled — will use HTTPS migrate fallback."
+              exit 2
             fi
             if [ "$RC" -eq 0 ] && grep -q "Migrate + cache OK" "$OUT"; then
               OK=1
@@ -151,3 +195,161 @@ jobs:
             fi
           done
           test "$OK" -eq 1
+
+      - name: Migrate via HTTPS (fallback when SSH shell is off)
+        if: steps.ssh.outcome != 'success'
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_SERVER_DIR: ${{ secrets.FTP_SERVER_DIR }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lftp curl python3
+          TOKEN=$(openssl rand -hex 32)
+          export TOKEN
+          DIR="${FTP_SERVER_DIR%/}"
+
+          python3 <<'PY'
+          import os
+          from pathlib import Path
+
+          token = os.environ["TOKEN"]
+          php = """<?php
+          declare(strict_types=1);
+          error_reporting(E_ALL);
+          ini_set('display_errors', '1');
+          header('Content-Type: text/plain; charset=UTF-8');
+
+          $expected = '__TOKEN__';
+          $given = (string) ($_GET['token'] ?? '');
+          if ($expected === '' || !hash_equals($expected, $given)) {
+              http_response_code(403);
+              echo "Forbidden\\n";
+              exit;
+          }
+
+          function fail(string $msg): void {
+              http_response_code(500);
+              echo "ERROR: {$msg}\\n";
+              @unlink(__FILE__);
+              exit(1);
+          }
+
+          $root = dirname(__DIR__);
+          echo "root={$root}\\n";
+          echo "php=" . PHP_VERSION . "\\n";
+
+          if (!is_file($root . '/vendor/autoload.php')) {
+              $gz = $root . '/vendor.tar.gz';
+              if (!is_file($gz)) {
+                  fail('vendor/autoload.php missing AND vendor.tar.gz missing — re-run Deploy with force_vendor');
+              }
+              echo "extracting vendor.tar.gz ...\\n";
+              try {
+                  if (!class_exists('PharData')) {
+                      fail('PharData unavailable on this host');
+                  }
+                  @unlink($root . '/vendor.tar');
+                  $phar = new PharData($gz);
+                  $phar->decompress();
+                  $tarFile = $root . '/vendor.tar';
+                  if (!is_file($tarFile)) {
+                      fail('decompress did not create vendor.tar');
+                  }
+                  $tar = new PharData($tarFile);
+                  $tar->extractTo($root, null, true);
+                  @unlink($tarFile);
+                  @unlink($gz);
+                  echo "vendor extracted OK\\n";
+              } catch (Throwable $e) {
+                  fail('vendor extract failed: ' . $e->getMessage());
+              }
+              if (!is_file($root . '/vendor/autoload.php')) {
+                  fail('extract ran but vendor/autoload.php still missing');
+              }
+          }
+          if (!is_file($root . '/.env')) {
+              fail('.env missing in Laravel root');
+          }
+
+          try {
+              require $root . '/vendor/autoload.php';
+              $app = require $root . '/bootstrap/app.php';
+              $kernel = $app->make(Illuminate\\Contracts\\Console\\Kernel::class);
+              $kernel->bootstrap();
+
+              Illuminate\\Support\\Facades\\Artisan::call('config:clear');
+              Illuminate\\Support\\Facades\\Artisan::call('migrate', ['--force' => true]);
+              echo Illuminate\\Support\\Facades\\Artisan::output();
+
+              try {
+                  Illuminate\\Support\\Facades\\Artisan::call('aura:backfill-transaction-user-id');
+                  echo Illuminate\\Support\\Facades\\Artisan::output();
+              } catch (Throwable $e) {
+                  echo "backfill skipped: " . $e->getMessage() . "\\n";
+              }
+
+              Illuminate\\Support\\Facades\\Artisan::call('db:seed', [
+                  '--class' => 'Database\\\\Seeders\\\\RoleLimitsSeeder',
+                  '--force' => true,
+              ]);
+              echo Illuminate\\Support\\Facades\\Artisan::output();
+
+              Illuminate\\Support\\Facades\\Artisan::call('config:cache');
+              echo "config:cache OK\\n";
+              try {
+                  Illuminate\\Support\\Facades\\Artisan::call('route:cache');
+              } catch (Throwable $e) {
+                  echo "route:cache skipped\\n";
+              }
+              try {
+                  Illuminate\\Support\\Facades\\Artisan::call('view:cache');
+              } catch (Throwable $e) {
+                  echo "view:cache skipped\\n";
+              }
+              echo "MIGRATE_OK\\n";
+          } catch (Throwable $e) {
+              fail($e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
+          }
+
+          @unlink(__FILE__);
+          """
+          php = php.replace("__TOKEN__", token)
+          lines = php.splitlines(True)
+          out = []
+          for line in lines:
+              out.append(line[2:] if line.startswith("  ") else line)
+          Path("__migrate_once.php").write_text("".join(out), encoding="utf-8", newline="\n")
+          print("wrote", Path("__migrate_once.php").stat().st_size, "bytes")
+          PY
+
+          lftp -c "
+            set ftp:ssl-allow no;
+            set net:timeout 60;
+            open -u ${FTP_USERNAME},${FTP_PASSWORD} ${FTP_SERVER};
+            cd ${DIR}/public;
+            put __migrate_once.php;
+            bye
+          "
+
+          RESP_FILE=$(mktemp)
+          HTTP_CODE=$(curl -sS -L --max-time 300 \
+            -o "$RESP_FILE" -w "%{http_code}" \
+            "https://aura.vonluqi.com/__migrate_once.php?token=${TOKEN}" || echo "000")
+          echo "HTTP_CODE=$HTTP_CODE"
+          cat "$RESP_FILE" || true
+
+          lftp -c "
+            set ftp:ssl-allow no;
+            set net:timeout 30;
+            open -u ${FTP_USERNAME},${FTP_PASSWORD} ${FTP_SERVER};
+            cd ${DIR}/public;
+            rm -f __migrate_once.php;
+            bye
+          " || true
+          rm -f __migrate_once.php
+
+          grep -q MIGRATE_OK "$RESP_FILE"
+          echo "HTTPS migrate fallback OK"
