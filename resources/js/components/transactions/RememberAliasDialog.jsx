@@ -39,7 +39,7 @@ export default function RememberAliasDialog({
     const formId = useId();
     const [displayName, setDisplayName] = useState('');
     const [matchType, setMatchType] = useState('contains');
-    const [applyToExisting, setApplyToExisting] = useState(false);
+    const [applyToExisting, setApplyToExisting] = useState(true);
     const [fieldError, setFieldError] = useState('');
     const [formError, setFormError] = useState('');
 
@@ -50,7 +50,7 @@ export default function RememberAliasDialog({
 
         setDisplayName(transaction?.description?.trim() ?? '');
         setMatchType('contains');
-        setApplyToExisting(false);
+        setApplyToExisting(true);
         setFieldError('');
         setFormError('');
     }, [open, transaction]);

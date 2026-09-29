@@ -27,6 +27,7 @@ final class AnalyticsService
     public function __construct(
         private readonly TransactionQueryService $transactions,
         private readonly DashboardGoalsAggregator $goalsAggregator,
+        private readonly AliasResolutionService $aliasResolution,
     ) {}
 
     /**
@@ -143,9 +144,8 @@ final class AnalyticsService
      */
     public function series(User $user, array $filters = [], string $groupBy = 'month'): array
     {
-        $periodExpr = $groupBy === 'day'
-            ? "DATE_FORMAT(transactions.occurred_on, '%Y-%m-%d')"
-            : "DATE_FORMAT(transactions.occurred_on, '%Y-%m')";
+        $driver = $this->transactions->baseForUser($user, $filters)->getConnection()->getDriverName();
+        $periodExpr = $this->periodExpression($driver, $groupBy);
 
         $rows = $this->transactions->baseForUser($user, $filters)
             ->toBase()
@@ -174,7 +174,7 @@ final class AnalyticsService
     }
 
     /**
-     * Expense pie by default (debit only when type filter omitted).
+     * Totals by category. Respects `type` filter; when omitted, returns credit and debit as separate rows.
      *
      * @param  AnalyticsFilters  $filters
      * @return list<array{
@@ -188,25 +188,43 @@ final class AnalyticsService
      */
     public function byCategory(User $user, array $filters = []): array
     {
-        $categoryFilters = $filters;
-        if (($categoryFilters['type'] ?? null) === null || $categoryFilters['type'] === '') {
-            $categoryFilters['type'] = 'debit';
-        }
-        $effectiveType = (string) $categoryFilters['type'];
+        $groupByType = ($filters['type'] ?? null) === null || $filters['type'] === '';
 
-        $rows = $this->transactions->baseForUser($user, $categoryFilters)
-            ->toBase()
-            ->leftJoin('categories', 'categories.id', '=', 'transactions.category_id')
-            ->selectRaw('
+        $select = '
                 transactions.category_id as category_id,
                 categories.name as name,
                 categories.color as color,
                 COALESCE(SUM(transactions.amount), 0) as total,
                 COUNT(*) as count
-            ')
-            ->groupBy('transactions.category_id', 'categories.name', 'categories.color')
-            ->orderByDesc('total')
-            ->get();
+            ';
+        if ($groupByType) {
+            $select = '
+                transactions.category_id as category_id,
+                categories.name as name,
+                categories.color as color,
+                transactions.type as type,
+                COALESCE(SUM(transactions.amount), 0) as total,
+                COUNT(*) as count
+            ';
+        }
+
+        $query = $this->transactions->baseForUser($user, $filters)
+            ->toBase()
+            ->leftJoin('categories', 'categories.id', '=', 'transactions.category_id')
+            ->selectRaw($select);
+
+        if ($groupByType) {
+            $query->groupBy(
+                'transactions.category_id',
+                'categories.name',
+                'categories.color',
+                'transactions.type'
+            );
+        } else {
+            $query->groupBy('transactions.category_id', 'categories.name', 'categories.color');
+        }
+
+        $rows = $query->orderByDesc('total')->get();
 
         $items = [];
         foreach ($rows as $row) {
@@ -216,7 +234,9 @@ final class AnalyticsService
                 'color' => $row->color !== null ? (string) $row->color : null,
                 'total' => $this->money((float) $row->total),
                 'count' => (int) $row->count,
-                'type' => $effectiveType,
+                'type' => $groupByType
+                    ? (string) $row->type
+                    : (string) $filters['type'],
             ];
         }
 
@@ -224,9 +244,11 @@ final class AnalyticsService
     }
 
     /**
-     * Debit totals grouped by alias display_name (identical names merge into one bar).
+     * Totals grouped by alias display_name (identical names merge into one bar per type).
      *
-     * Only transactions with `raw_payload.alias_id` (matched by AliasResolutionService).
+     * Prefers `raw_payload.alias_id` (applied on upload / retroactive). Falls back to
+     * live AliasResolutionService match on original_description / description so
+     * active rules appear in the chart before apply_to_existing runs.
      *
      * @param  AnalyticsFilters  $filters
      * @return list<array{
@@ -240,11 +262,8 @@ final class AnalyticsService
      */
     public function byAlias(User $user, array $filters = []): array
     {
-        $aliasFilters = $filters;
-        if (($aliasFilters['type'] ?? null) === null || $aliasFilters['type'] === '') {
-            $aliasFilters['type'] = 'debit';
-        }
-        $effectiveType = (string) $aliasFilters['type'];
+        $groupByType = ($filters['type'] ?? null) === null || $filters['type'] === '';
+        $effectiveType = $groupByType ? null : (string) $filters['type'];
 
         $aliasNames = TransactionAlias::query()
             ->forUser($user)
@@ -255,34 +274,51 @@ final class AnalyticsService
             return [];
         }
 
-        $transactions = $this->transactions->baseForUser($user, $aliasFilters)
-            ->get(['amount', 'raw_payload']);
+        $transactions = $this->transactions->baseForUser($user, $filters)
+            ->get(['amount', 'type', 'description', 'raw_payload']);
 
-        /** @var array<string, array{alias_id: int, name: string, total: float, count: int}> $buckets */
+        /** @var array<string, array{alias_id: int, name: string, type: string, total: float, count: int}> $buckets */
         $buckets = [];
 
         foreach ($transactions as $transaction) {
             $payload = is_array($transaction->raw_payload) ? $transaction->raw_payload : [];
             $aliasId = isset($payload['alias_id']) ? (int) $payload['alias_id'] : null;
-            if ($aliasId === null || $aliasId < 1) {
-                continue;
+            $name = null;
+
+            if ($aliasId !== null && $aliasId > 0) {
+                $alias = $aliasNames->get($aliasId);
+                if ($alias !== null) {
+                    $name = trim((string) $alias->display_name);
+                }
             }
 
-            $alias = $aliasNames->get($aliasId);
-            if ($alias === null) {
-                continue;
+            if ($name === null || $name === '') {
+                $rawDescription = isset($payload['original_description'])
+                    && is_string($payload['original_description'])
+                    && $payload['original_description'] !== ''
+                    ? $payload['original_description']
+                    : (string) $transaction->description;
+
+                $match = $this->aliasResolution->resolve($user, $rawDescription);
+                if ($match === null) {
+                    continue;
+                }
+
+                $aliasId = $match->aliasId;
+                $name = trim($match->displayName);
             }
 
-            $name = trim((string) $alias->display_name);
             if ($name === '') {
                 continue;
             }
 
-            $key = mb_strtolower($name);
+            $rowType = (string) $transaction->type;
+            $key = mb_strtolower($name).($groupByType ? '|'.$rowType : '');
             if (! isset($buckets[$key])) {
                 $buckets[$key] = [
                     'alias_id' => $aliasId,
                     'name' => $name,
+                    'type' => $groupByType ? $rowType : (string) $effectiveType,
                     'total' => 0.0,
                     'count' => 0,
                 ];
@@ -305,7 +341,7 @@ final class AnalyticsService
                 'color' => $palette[$index % count($palette)],
                 'total' => $this->money($bucket['total']),
                 'count' => $bucket['count'],
-                'type' => $effectiveType,
+                'type' => $bucket['type'],
             ];
             $index++;
         }
@@ -316,5 +352,21 @@ final class AnalyticsService
     private function money(float $value): string
     {
         return number_format($value, 2, '.', '');
+    }
+
+    /**
+     * @param  'day'|'month'  $groupBy
+     */
+    private function periodExpression(string $driver, string $groupBy): string
+    {
+        if ($driver === 'sqlite') {
+            return $groupBy === 'day'
+                ? "strftime('%Y-%m-%d', transactions.occurred_on)"
+                : "strftime('%Y-%m', transactions.occurred_on)";
+        }
+
+        return $groupBy === 'day'
+            ? "DATE_FORMAT(transactions.occurred_on, '%Y-%m-%d')"
+            : "DATE_FORMAT(transactions.occurred_on, '%Y-%m')";
     }
 }

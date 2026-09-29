@@ -58,7 +58,7 @@ export default function AliasFormModal({
     const [categoryId, setCategoryId] = useState('');
     const [priority, setPriority] = useState('100');
     const [isActive, setIsActive] = useState(true);
-    const [applyToExisting, setApplyToExisting] = useState(false);
+    const [applyToExisting, setApplyToExisting] = useState(true);
     const [previewText, setPreviewText] = useState('');
     const [previewResult, setPreviewResult] = useState(/** @type {null|false|object} */ (null));
     const [previewStatus, setPreviewStatus] = useState('idle');
@@ -72,7 +72,7 @@ export default function AliasFormModal({
 
         setFieldErrors(EMPTY_ERRORS);
         setFormError('');
-        setApplyToExisting(false);
+        setApplyToExisting(true);
         setPreviewText('');
         setPreviewResult(null);
         setPreviewStatus('idle');

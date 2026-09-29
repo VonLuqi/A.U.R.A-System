@@ -131,11 +131,14 @@ Crie o schema MySQL (exemplo alinhado ao `.env.example`):
 
 ```sql
 CREATE DATABASE aura CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE aura_testing CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER 'aura_dev'@'127.0.0.1' IDENTIFIED BY 'sua_senha';
 GRANT ALL PRIVILEGES ON aura.* TO 'aura_dev'@'127.0.0.1';
+GRANT ALL PRIVILEGES ON aura_testing.* TO 'aura_dev'@'127.0.0.1';
 FLUSH PRIVILEGES;
 ```
 
+`aura_testing` é o banco isolado do PHPUnit (`phpunit.xml`). Sem ele, `RefreshDatabase` apaga os dados do app local.
 Em seguida:
 
 ```bash
@@ -196,6 +199,8 @@ npm run build
 ```
 
 ### 7. Testes
+
+Os Feature tests usam `RefreshDatabase` no schema **`aura_testing`** (não no `aura` do app). Garanta que o schema exista e o user `DB_USERNAME` tenha grant nele.
 
 ```bash
 # Backend

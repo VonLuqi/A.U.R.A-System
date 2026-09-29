@@ -79,13 +79,19 @@ class DashboardAnalyticsEndpointTest extends TestCase
             ->assertJsonPath('data.series.0.period', '2026-09')
             ->assertJsonPath('data.series.0.income', '5000.00')
             ->assertJsonPath('data.series.0.expense', '3200.50')
-            ->assertJsonPath('data.series.0.balance', '1799.50')
-            ->assertJsonPath('data.by_category.0.category_id', $food->id)
-            ->assertJsonPath('data.by_category.0.name', 'Alimentação')
-            ->assertJsonPath('data.by_category.0.color', '#DCCFFF')
-            ->assertJsonPath('data.by_category.0.total', '3200.50')
-            ->assertJsonPath('data.by_category.0.count', 1)
-            ->assertJsonPath('data.by_category.0.type', 'debit');
+            ->assertJsonPath('data.series.0.balance', '1799.50');
+
+        $byCategory = collect($response->json('data.by_category'));
+        $this->assertCount(2, $byCategory);
+        $debit = $byCategory->firstWhere('type', 'debit');
+        $credit = $byCategory->firstWhere('type', 'credit');
+        $this->assertSame($food->id, $debit['category_id']);
+        $this->assertSame('Alimentação', $debit['name']);
+        $this->assertSame('#DCCFFF', $debit['color']);
+        $this->assertSame('3200.50', $debit['total']);
+        $this->assertSame(1, $debit['count']);
+        $this->assertSame('5000.00', $credit['total']);
+        $this->assertSame(1, $credit['count']);
 
         // Money must be JSON strings (not floats).
         $cards = $response->json('data.cards');
@@ -93,7 +99,7 @@ class DashboardAnalyticsEndpointTest extends TestCase
         $this->assertIsString($cards['total_income']);
         $this->assertIsString($cards['total_expense']);
         $this->assertIsString($response->json('data.series.0.income'));
-        $this->assertIsString($response->json('data.by_category.0.total'));
+        $this->assertIsString($debit['total']);
     }
 
     public function test_requires_authentication(): void

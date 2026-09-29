@@ -149,7 +149,7 @@ class AnalyticsServiceTest extends TestCase
         $this->assertSame('20.00', $series[1]['expense']);
     }
 
-    public function test_by_category_defaults_to_debit_and_includes_type(): void
+    public function test_by_category_includes_credit_and_debit_when_type_omitted(): void
     {
         $user = User::factory()->create();
         $import = StatementImport::factory()->for($user)->create();
@@ -180,7 +180,6 @@ class AnalyticsServiceTest extends TestCase
             'category_id' => $transport->id,
             'amount' => '50.00',
         ]);
-        // Credit must not appear in default expense pie.
         Transaction::factory()->for($import, 'statementImport')->create([
             'occurred_on' => '2026-09-08',
             'type' => 'credit',
@@ -193,16 +192,28 @@ class AnalyticsServiceTest extends TestCase
             'to' => '2026-09-30',
         ]);
 
-        $this->assertCount(2, $byCategory);
-        $this->assertSame($food->id, $byCategory[0]['category_id']);
-        $this->assertSame('Alimentação', $byCategory[0]['name']);
-        $this->assertSame('#DCCFFF', $byCategory[0]['color']);
-        $this->assertSame('450.00', $byCategory[0]['total']);
-        $this->assertSame(2, $byCategory[0]['count']);
-        $this->assertSame('debit', $byCategory[0]['type']);
-        $this->assertSame($transport->id, $byCategory[1]['category_id']);
-        $this->assertSame('50.00', $byCategory[1]['total']);
-        $this->assertSame('debit', $byCategory[1]['type']);
+        $this->assertCount(3, $byCategory);
+
+        $creditFood = collect($byCategory)->first(
+            fn (array $row): bool => $row['category_id'] === $food->id && $row['type'] === 'credit'
+        );
+        $debitFood = collect($byCategory)->first(
+            fn (array $row): bool => $row['category_id'] === $food->id && $row['type'] === 'debit'
+        );
+        $debitTransport = collect($byCategory)->first(
+            fn (array $row): bool => $row['category_id'] === $transport->id && $row['type'] === 'debit'
+        );
+
+        $this->assertNotNull($creditFood);
+        $this->assertSame('999.00', $creditFood['total']);
+        $this->assertSame(1, $creditFood['count']);
+
+        $this->assertNotNull($debitFood);
+        $this->assertSame('450.00', $debitFood['total']);
+        $this->assertSame(2, $debitFood['count']);
+
+        $this->assertNotNull($debitTransport);
+        $this->assertSame('50.00', $debitTransport['total']);
     }
 
     public function test_by_category_respects_explicit_credit_type_filter(): void
@@ -262,8 +273,11 @@ class AnalyticsServiceTest extends TestCase
 
         $this->assertSame('1799.50', $result['cards']['balance']);
         $this->assertSame('2026-09', $result['series'][0]['period']);
-        $this->assertSame('3200.50', $result['by_category'][0]['total']);
-        $this->assertSame('debit', $result['by_category'][0]['type']);
+        $this->assertCount(2, $result['by_category']);
+        $types = collect($result['by_category'])->pluck('type')->sort()->values()->all();
+        $this->assertSame(['credit', 'debit'], $types);
+        $debit = collect($result['by_category'])->firstWhere('type', 'debit');
+        $this->assertSame('3200.50', $debit['total']);
     }
 
     public function test_each_block_uses_one_aggregated_query(): void

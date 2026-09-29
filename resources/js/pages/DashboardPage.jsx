@@ -146,35 +146,41 @@ export default function DashboardPage() {
                 )}
             </section>
 
-            {canManageGoals ? (
-                <GoalsWidget
-                    goals={analytics.data?.goals}
-                    loading={chartsLoading}
-                    onCreate={() => setGoalFormOpen(true)}
-                />
-            ) : null}
-
             <section
-                className="grid grid-cols-1 gap-5 lg:grid-cols-2"
+                className={
+                    canManageGoals
+                        ? 'grid grid-cols-1 gap-5 lg:grid-cols-6'
+                        : 'grid grid-cols-1 gap-5 lg:grid-cols-2'
+                }
                 aria-label="Gráficos"
             >
                 <EvolutionChart
-                    className="min-w-0"
+                    className={canManageGoals ? 'min-w-0 lg:col-span-4' : 'min-w-0'}
                     series={analytics.data?.series}
                     loading={chartsLoading}
                     error={analyticsError}
                     onRetry={analytics.refetch}
                 />
+                {canManageGoals ? (
+                    <GoalsWidget
+                        className="min-w-0 lg:col-span-2"
+                        goals={analytics.data?.goals}
+                        loading={chartsLoading}
+                        onCreate={() => setGoalFormOpen(true)}
+                    />
+                ) : null}
                 <CategoryChart
-                    className="min-w-0"
+                    className={canManageGoals ? 'min-w-0 lg:col-span-3' : 'min-w-0'}
                     byCategory={analytics.data?.by_category}
+                    filterType={filters.type || ''}
                     loading={chartsLoading}
                     error={analyticsError}
                     onRetry={analytics.refetch}
                 />
                 <AliasChart
-                    className="min-w-0 lg:col-span-2"
+                    className={canManageGoals ? 'min-w-0 lg:col-span-3' : 'min-w-0'}
                     byAlias={analytics.data?.by_alias}
+                    filterType={filters.type || ''}
                     loading={chartsLoading}
                     error={analyticsError}
                     onRetry={analytics.refetch}

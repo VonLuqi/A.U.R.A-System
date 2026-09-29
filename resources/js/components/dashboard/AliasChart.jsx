@@ -26,6 +26,39 @@ function parseAmount(value) {
     return Number.isNaN(amount) ? 0 : amount;
 }
 
+function typeLabel(type) {
+    if (type === 'credit') {
+        return 'Entrada';
+    }
+    if (type === 'debit') {
+        return 'Saída';
+    }
+
+    return null;
+}
+
+function chartTitle(filterType) {
+    if (filterType === 'credit') {
+        return 'Entradas por apelido';
+    }
+    if (filterType === 'debit') {
+        return 'Despesas por apelido';
+    }
+
+    return 'Por apelido';
+}
+
+function chartSubtitle(filterType) {
+    if (filterType === 'credit') {
+        return 'Soma as entradas com regra de apelido. Nomes iguais viram uma só barra.';
+    }
+    if (filterType === 'debit') {
+        return 'Soma as saídas com regra de apelido. Nomes iguais viram uma só barra.';
+    }
+
+    return 'Soma entradas e saídas com regra de apelido. Nomes iguais viram uma barra por tipo.';
+}
+
 /**
  * @param {Array<{
  *   alias_id?: number|null,
@@ -33,6 +66,7 @@ function parseAmount(value) {
  *   color?: string|null,
  *   total?: string|number,
  *   count?: number,
+ *   type?: string,
  * }>|null|undefined} rows
  */
 function toChartData(rows) {
@@ -40,13 +74,27 @@ function toChartData(rows) {
         return [];
     }
 
-    return rows.map((row, index) => ({
-        key: row.alias_id ?? `alias-${index}`,
-        name: row.name || 'Sem apelido',
-        color: row.color || FALLBACK_FILL,
-        total: parseAmount(row.total),
-        count: Number(row.count) || 0,
-    }));
+    const nameCounts = new Map();
+    for (const row of rows) {
+        const base = row.name || 'Sem apelido';
+        nameCounts.set(base, (nameCounts.get(base) || 0) + 1);
+    }
+
+    return rows.map((row, index) => {
+        const baseName = row.name || 'Sem apelido';
+        const suffix = typeLabel(row.type);
+        const needsSuffix = nameCounts.get(baseName) > 1 && suffix;
+
+        return {
+            key: `${row.alias_id ?? `alias-${index}`}-${row.type ?? 'all'}`,
+            name: needsSuffix ? `${baseName} · ${suffix}` : baseName,
+            color: row.color || FALLBACK_FILL,
+            total: parseAmount(row.total),
+            count: Number(row.count) || 0,
+            type: row.type || '',
+            typeLabel: suffix,
+        };
+    });
 }
 
 function ChartTooltip({ active, payload }) {
@@ -70,6 +118,9 @@ function ChartTooltip({ active, payload }) {
                 />
                 {row.name}
             </p>
+            {row.typeLabel ? (
+                <p className="text-ink-on-inverse/70">{row.typeLabel}</p>
+            ) : null}
             <p>{formatMoney(row.total)}</p>
             <p className="text-ink-on-inverse/70">
                 {row.count} {row.count === 1 ? 'movimentação' : 'movimentações'}
@@ -79,7 +130,7 @@ function ChartTooltip({ active, payload }) {
 }
 
 /**
- * AliasChart — despesas agrupadas por apelido (display_name; nomes iguais = 1 barra).
+ * AliasChart — totais agrupados por apelido (display_name; nomes iguais = 1 barra por tipo).
  *
  * @param {{
  *   byAlias?: Array<{
@@ -90,6 +141,7 @@ function ChartTooltip({ active, payload }) {
  *     count?: number,
  *     type?: string,
  *   }>|null,
+ *   filterType?: '' | 'credit' | 'debit',
  *   loading?: boolean,
  *   error?: string|null,
  *   onRetry?: () => void,
@@ -98,6 +150,7 @@ function ChartTooltip({ active, payload }) {
  */
 export default function AliasChart({
     byAlias = null,
+    filterType = '',
     loading = false,
     error = null,
     onRetry,
@@ -110,10 +163,8 @@ export default function AliasChart({
     return (
         <Card className={['flex flex-col gap-4', className].filter(Boolean).join(' ')}>
             <div className="flex flex-col gap-1">
-                <h2 className="text-h2 font-semibold text-ink">Despesas por apelido</h2>
-                <p className="text-small text-ink-muted">
-                    Soma as saídas com regra de apelido aplicada. Nomes iguais viram uma só barra.
-                </p>
+                <h2 className="text-h2 font-semibold text-ink">{chartTitle(filterType)}</h2>
+                <p className="text-small text-ink-muted">{chartSubtitle(filterType)}</p>
             </div>
 
             {error ? (
@@ -128,7 +179,7 @@ export default function AliasChart({
             ) : isEmpty ? (
                 <EmptyState
                     title="Nenhum apelido neste período"
-                    description="Crie apelidos (ou use “Lembrar apelido”) e reimporte / aplique nas movimentações para ver o gráfico."
+                    description="Crie apelidos (ou use “Lembrar apelido”). Regras ativas entram no gráfico mesmo antes de aplicar nas movimentações."
                 />
             ) : (
                 <div

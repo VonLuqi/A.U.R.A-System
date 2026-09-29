@@ -15,6 +15,7 @@ import Skeleton from '../ui/Skeleton';
 
 const AXIS_COLOR = 'var(--color-text-secondary)';
 const FALLBACK_FILL = 'var(--color-brand-muted)';
+const CREDIT_FILL = 'var(--color-feedback-positive, #A8E6C3)';
 
 function parseAmount(value) {
     if (value === null || value === undefined || value === '') {
@@ -26,6 +27,28 @@ function parseAmount(value) {
     return Number.isNaN(amount) ? 0 : amount;
 }
 
+function typeLabel(type) {
+    if (type === 'credit') {
+        return 'Entrada';
+    }
+    if (type === 'debit') {
+        return 'Saída';
+    }
+
+    return null;
+}
+
+function chartTitle(filterType) {
+    if (filterType === 'credit') {
+        return 'Entradas por categoria';
+    }
+    if (filterType === 'debit') {
+        return 'Despesas por categoria';
+    }
+
+    return 'Por categoria';
+}
+
 /**
  * @param {Array<{
  *   category_id?: number|null,
@@ -33,6 +56,7 @@ function parseAmount(value) {
  *   color?: string|null,
  *   total?: string|number,
  *   count?: number,
+ *   type?: string,
  * }>|null|undefined} rows
  */
 function toChartData(rows) {
@@ -40,13 +64,31 @@ function toChartData(rows) {
         return [];
     }
 
-    return rows.map((row, index) => ({
-        key: row.category_id ?? `uncategorized-${index}`,
-        name: row.name || 'Sem categoria',
-        color: row.color || FALLBACK_FILL,
-        total: parseAmount(row.total),
-        count: Number(row.count) || 0,
-    }));
+    const nameCounts = new Map();
+    for (const row of rows) {
+        const base = row.name || 'Sem categoria';
+        nameCounts.set(base, (nameCounts.get(base) || 0) + 1);
+    }
+
+    return rows.map((row, index) => {
+        const baseName = row.name || 'Sem categoria';
+        const suffix = typeLabel(row.type);
+        const needsSuffix = nameCounts.get(baseName) > 1 && suffix;
+        const fill =
+            row.type === 'credit'
+                ? row.color || CREDIT_FILL
+                : row.color || FALLBACK_FILL;
+
+        return {
+            key: `${row.category_id ?? `uncategorized-${index}`}-${row.type ?? 'all'}`,
+            name: needsSuffix ? `${baseName} · ${suffix}` : baseName,
+            color: fill,
+            total: parseAmount(row.total),
+            count: Number(row.count) || 0,
+            type: row.type || '',
+            typeLabel: suffix,
+        };
+    });
 }
 
 function ChartTooltip({ active, payload }) {
@@ -70,6 +112,9 @@ function ChartTooltip({ active, payload }) {
                 />
                 {row.name}
             </p>
+            {row.typeLabel ? (
+                <p className="text-ink-on-inverse/70">{row.typeLabel}</p>
+            ) : null}
             <p>{formatMoney(row.total)}</p>
             <p className="text-ink-on-inverse/70">
                 {row.count} {row.count === 1 ? 'movimentação' : 'movimentações'}
@@ -90,6 +135,7 @@ function ChartTooltip({ active, payload }) {
  *     count?: number,
  *     type?: string,
  *   }>|null,
+ *   filterType?: '' | 'credit' | 'debit',
  *   loading?: boolean,
  *   error?: string|null,
  *   onRetry?: () => void,
@@ -98,6 +144,7 @@ function ChartTooltip({ active, payload }) {
  */
 export default function CategoryChart({
     byCategory = null,
+    filterType = '',
     loading = false,
     error = null,
     onRetry,
@@ -109,7 +156,7 @@ export default function CategoryChart({
 
     return (
         <Card className={['flex flex-col gap-4', className].filter(Boolean).join(' ')}>
-            <h2 className="text-h2 font-semibold text-ink">Despesas por categoria</h2>
+            <h2 className="text-h2 font-semibold text-ink">{chartTitle(filterType)}</h2>
 
             {error ? (
                 <ErrorState
