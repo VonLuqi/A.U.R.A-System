@@ -1,0 +1,162 @@
+name: Seed HostGator
+
+# Seed admin + categories sem shell SSH: FTP + PHP one-shot por HTTPS.
+# Pré-requisito: .env no servidor com APP_KEY, DB_* e ADMIN_EMAIL / ADMIN_PASSWORD.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Install tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lftp curl python3
+
+      - name: Upload one-shot seed + run + delete
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_SERVER_DIR: ${{ secrets.FTP_SERVER_DIR }}
+        run: |
+          set -euo pipefail
+          TOKEN=$(openssl rand -hex 32)
+          export TOKEN
+          DIR="${FTP_SERVER_DIR%/}"
+
+          python3 <<'PY'
+          import os
+          from pathlib import Path
+
+          token = os.environ["TOKEN"]
+          php = """<?php
+          declare(strict_types=1);
+          error_reporting(E_ALL);
+          ini_set('display_errors', '1');
+          header('Content-Type: text/plain; charset=UTF-8');
+
+          $expected = '__TOKEN__';
+          $given = (string) ($_GET['token'] ?? '');
+          if ($expected === '' || !hash_equals($expected, $given)) {
+              http_response_code(403);
+              echo "Forbidden\\n";
+              exit;
+          }
+
+          function fail(string $msg): void {
+              http_response_code(500);
+              echo "ERROR: {$msg}\\n";
+              @unlink(__FILE__);
+              exit(1);
+          }
+
+          $root = dirname(__DIR__);
+          echo "root={$root}\\n";
+          echo "php=" . PHP_VERSION . "\\n";
+
+          if (!is_file($root . '/vendor/autoload.php')) {
+              fail('vendor/autoload.php missing — run Deploy HostGator / extract vendor.tar.gz first');
+          }
+          if (!is_file($root . '/.env')) {
+              fail('.env missing in Laravel root');
+          }
+
+          try {
+              require $root . '/vendor/autoload.php';
+              $app = require $root . '/bootstrap/app.php';
+              $kernel = $app->make(Illuminate\\Contracts\\Console\\Kernel::class);
+              $kernel->bootstrap();
+
+              if ((string) config('app.key') === '') {
+                  fail('APP_KEY is empty — generate and save APP_KEY in .env, clear bootstrap/cache, then re-run');
+              }
+
+              $adminEmail = (string) env('ADMIN_EMAIL', '');
+              $adminPass = (string) env('ADMIN_PASSWORD', '');
+              if ($adminEmail === '' || $adminPass === '') {
+                  fail('ADMIN_EMAIL and ADMIN_PASSWORD must be set in .env');
+              }
+              echo "admin_email={$adminEmail}\\n";
+
+              $driver = (string) config('database.default');
+              $db = (string) config("database.connections.{$driver}.database");
+              if ($driver !== 'mysql' || $db !== 'luca9682_aura') {
+                  fail("Expected mysql/luca9682_aura, got {$driver}/{$db}");
+              }
+
+              Illuminate\\Support\\Facades\\Artisan::call('config:clear');
+              Illuminate\\Support\\Facades\\Artisan::call('db:seed', [
+                  '--class' => 'Database\\\\Seeders\\\\AdminUserSeeder',
+                  '--force' => true,
+              ]);
+              echo Illuminate\\Support\\Facades\\Artisan::output();
+              echo "AdminUserSeeder OK\\n";
+
+              Illuminate\\Support\\Facades\\Artisan::call('db:seed', [
+                  '--class' => 'Database\\\\Seeders\\\\CategorySeeder',
+                  '--force' => true,
+              ]);
+              echo Illuminate\\Support\\Facades\\Artisan::output();
+              echo "CategorySeeder OK\\n";
+
+              $user = Illuminate\\Support\\Facades\\DB::table('users')->where('email', $adminEmail)->first();
+              if ($user === null) {
+                  fail("User not found after seed: {$adminEmail}");
+              }
+              echo "user_id={$user->id}\\n";
+              echo "SEED_OK\\n";
+          } catch (Throwable $e) {
+              fail($e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
+          }
+
+          @unlink(__FILE__);
+          """
+          php = php.replace("__TOKEN__", token)
+          lines = php.splitlines(True)
+          out = []
+          for line in lines:
+              if line.startswith("  "):
+                  out.append(line[2:])
+              else:
+                  out.append(line)
+          text = "".join(out)
+          Path("__seed_once.php").write_text(text, encoding="utf-8", newline="\n")
+          print("wrote", Path("__seed_once.php").stat().st_size, "bytes")
+          PY
+
+          echo "Uploading one-shot via FTP..."
+          lftp -c "
+            set ftp:ssl-allow no;
+            set net:timeout 60;
+            open -u ${FTP_USERNAME},${FTP_PASSWORD} ${FTP_SERVER};
+            cd ${DIR}/public;
+            put __seed_once.php;
+            bye
+          "
+
+          echo "Running seed over HTTPS..."
+          RESP_FILE=$(mktemp)
+          HTTP_CODE=$(curl -sS -L --max-time 300 \
+            -o "$RESP_FILE" -w "%{http_code}" \
+            "https://aura.vonluqi.com/__seed_once.php?token=${TOKEN}" || echo "000")
+          echo "HTTP_CODE=$HTTP_CODE"
+          echo "----- BODY -----"
+          cat "$RESP_FILE" || true
+          echo ""
+          echo "----- END -----"
+
+          echo "Deleting one-shot (best effort)..."
+          lftp -c "
+            set ftp:ssl-allow no;
+            set net:timeout 30;
+            open -u ${FTP_USERNAME},${FTP_PASSWORD} ${FTP_SERVER};
+            cd ${DIR}/public;
+            rm -f __seed_once.php;
+            bye
+          " || true
+          rm -f __seed_once.php
+
+          grep -q SEED_OK "$RESP_FILE"
+          echo "Seed HostGator OK"
