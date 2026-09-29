@@ -53,18 +53,18 @@ export default function FilterBar({
                 ) : null}
             </div>
 
-            <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
+            <div className="flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-start lg:gap-x-3 lg:gap-y-2">
                 <CategorySelect
                     categories={categories}
                     value={categoryId}
                     loading={categoriesLoading}
                     onChange={onCategoryChange}
-                    className="min-w-0 flex-1"
+                    className="w-full min-w-0 lg:flex-1"
                 />
                 <SearchField
                     value={q}
                     onChange={onSearchChange}
-                    className="min-w-[12rem] flex-1 sm:max-w-sm sm:flex-none"
+                    className="w-full lg:min-w-[12rem] lg:max-w-sm lg:flex-none"
                 />
             </div>
         </section>
