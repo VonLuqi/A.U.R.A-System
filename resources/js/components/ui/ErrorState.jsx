@@ -2,24 +2,28 @@
 import Button from './Button';
 
 /**
- * ErrorState — Etapa D §5.3.3.
- * Ícone + título/mensagem + “Tentar novamente”.
+ * ErrorState — Etapa D §5.3.3 / PLAN_EXPANSAO §8.4.
+ * Ícone + título/mensagem + ações (retry / sugestão acionável).
  *
  * @param {{
  *   title?: string,
  *   message?: string,
+ *   hint?: string,
  *   reference?: string|number,
  *   onRetry?: () => void,
  *   retryLabel?: string,
+ *   secondaryAction?: { label: string, onClick: () => void }|null,
  *   className?: string,
  * }} props
  */
 export default function ErrorState({
     title = 'Algo deu errado',
     message,
+    hint,
     reference,
     onRetry,
     retryLabel = 'Tentar novamente',
+    secondaryAction = null,
     className = '',
 }) {
     return (
@@ -44,15 +48,32 @@ export default function ErrorState({
                     {message ? (
                         <p className="mt-2 text-body text-ink-secondary">{message}</p>
                     ) : null}
+                    {hint ? (
+                        <p className="mt-2 text-caption text-ink-secondary">{hint}</p>
+                    ) : null}
                     {reference !== undefined && reference !== null && reference !== '' ? (
                         <p className="mt-2 text-caption text-ink-muted">Ref. #{reference}</p>
                     ) : null}
                 </div>
             </div>
-            {onRetry ? (
-                <Button type="button" variant="secondary" size="sm" onClick={onRetry}>
-                    {retryLabel}
-                </Button>
+            {onRetry || secondaryAction ? (
+                <div className="flex flex-wrap items-center gap-2">
+                    {secondaryAction ? (
+                        <Button
+                            type="button"
+                            variant="primary"
+                            size="sm"
+                            onClick={secondaryAction.onClick}
+                        >
+                            {secondaryAction.label}
+                        </Button>
+                    ) : null}
+                    {onRetry ? (
+                        <Button type="button" variant="secondary" size="sm" onClick={onRetry}>
+                            {retryLabel}
+                        </Button>
+                    ) : null}
+                </div>
             ) : null}
         </div>
     );

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Auth;
 
 use App\Models\User;
+use Database\Seeders\RoleLimitsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -10,9 +11,15 @@ class LoginTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed(RoleLimitsSeeder::class);
+    }
+
     public function test_login_succeeds_with_valid_credentials(): void
     {
-        $user = User::factory()->create([
+        $user = User::factory()->admin()->create([
             'email' => 'admin@aura.local',
             'password' => 'ChangeMeNow!123',
         ]);
@@ -25,6 +32,14 @@ class LoginTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('user.id', $user->id)
             ->assertJsonPath('user.email', 'admin@aura.local')
+            ->assertJsonPath('user.role', 'admin')
+            ->assertJsonStructure([
+                'user' => [
+                    'limits',
+                    'usage',
+                    'abilities',
+                ],
+            ])
             ->assertJsonMissingPath('user.password')
             ->assertJsonMissingPath('user.remember_token');
 
@@ -51,7 +66,7 @@ class LoginTest extends TestCase
 
     public function test_login_when_already_authenticated_returns_current_user(): void
     {
-        $user = User::factory()->create([
+        $user = User::factory()->admin()->create([
             'name' => 'Admin',
             'email' => 'admin@aura.local',
         ]);
@@ -60,11 +75,15 @@ class LoginTest extends TestCase
         $response = $this->actingAs($user)->postJson('/api/login');
 
         $response->assertOk()
-            ->assertExactJson([
+            ->assertJsonPath('user.id', $user->id)
+            ->assertJsonPath('user.name', 'Admin')
+            ->assertJsonPath('user.email', 'admin@aura.local')
+            ->assertJsonPath('user.role', 'admin')
+            ->assertJsonStructure([
                 'user' => [
-                    'id' => $user->id,
-                    'name' => 'Admin',
-                    'email' => 'admin@aura.local',
+                    'limits',
+                    'usage',
+                    'abilities',
                 ],
             ]);
     }

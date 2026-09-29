@@ -4,8 +4,8 @@ import { useAuth } from '../../hooks/useAuth';
 import Button from '../ui/Button';
 
 /**
- * UserMenu — Etapa D §1.4 / §2.2.
- * Nome (caption/600) + email ou role Admin (small/secondary) + Sair.
+ * UserMenu — Etapa D §1.4 / §2.2 / PLAN_EXPANSAO §8.1.
+ * Nome + papel (caption) + Sair.
  */
 export default function UserMenu() {
     const { user, logout } = useAuth();
@@ -29,12 +29,14 @@ export default function UserMenu() {
         }
     }
 
+    const roleLabel = typeof user.role === 'string' ? user.role : 'user';
+
     return (
         <div className="flex items-center gap-3">
             <div className="hidden min-w-0 max-w-[10rem] text-right sm:block lg:max-w-[14rem]">
                 <p className="truncate text-caption font-semibold text-ink">{user.name}</p>
                 <p className="truncate text-small font-normal text-ink-secondary" title={user.email}>
-                    {user.email || 'Admin'}
+                    {roleLabel}
                 </p>
             </div>
             <Button

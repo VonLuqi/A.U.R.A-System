@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Statements;
 
+use App\Models\StatementImport;
 use App\Support\StatementFormatDetector;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
@@ -18,7 +19,7 @@ class UploadStatementRequest extends FormRequest
 
     public function authorize(): bool
     {
-        return $this->user() !== null;
+        return $this->user()?->can('create', StatementImport::class) ?? false;
     }
 
     /**
@@ -34,7 +35,17 @@ class UploadStatementRequest extends FormRequest
                 // MIME sniffing is unreliable for CSV/OFX; extensions enforced in withValidator.
                 'mimes:csv,txt,ofx,xml',
             ],
-            'source' => ['sometimes', 'string', 'in:nubank'],
+            'source' => [
+                'sometimes',
+                'string',
+                'in:'.implode(',', StatementFormatDetector::ALLOWED_SOURCES),
+            ],
+            'statement_kind' => [
+                'sometimes',
+                'nullable',
+                'string',
+                'in:'.implode(',', StatementFormatDetector::ALLOWED_KINDS),
+            ],
         ];
     }
 
@@ -48,7 +59,8 @@ class UploadStatementRequest extends FormRequest
             'file.file' => 'O upload deve ser um arquivo válido.',
             'file.max' => 'O arquivo deve ter no máximo 10 MB.',
             'file.mimes' => 'Formato não suportado. Use CSV ou OFX (também .qfx).',
-            'source.in' => 'Fonte inválida. No MVP apenas nubank é aceita.',
+            'source.in' => 'Fonte inválida. Use nubank, nubank_credit ou other.',
+            'statement_kind.in' => 'Tipo de extrato inválido. Use checking ou credit_card.',
         ];
     }
 
@@ -56,6 +68,19 @@ class UploadStatementRequest extends FormRequest
     {
         $validator->after(function (Validator $validator): void {
             if ($validator->errors()->isNotEmpty()) {
+                return;
+            }
+
+            $kind = StatementFormatDetector::normalizeKind($this->input('statement_kind'));
+            $source = StatementFormatDetector::normalizeSource($this->input('source'));
+            $wantsCreditCard = $kind === 'credit_card' || $source === 'nubank_credit';
+
+            if ($wantsCreditCard && ! config('aura.features.credit_card_upload', true)) {
+                $validator->errors()->add(
+                    'statement_kind',
+                    'Upload de fatura de cartão está temporariamente desabilitado.'
+                );
+
                 return;
             }
 
@@ -78,11 +103,15 @@ class UploadStatementRequest extends FormRequest
     }
 
     /**
-     * Detected format for parsers / statement_imports: csv | ofx (.qfx → ofx).
+     * Detected format for parsers / statement_imports: csv | csv_credit_card | ofx.
      */
     public function detectedFormat(): string
     {
-        return StatementFormatDetector::detect($this->file('file'));
+        return StatementFormatDetector::detect(
+            $this->file('file'),
+            $this->input('source'),
+            $this->input('statement_kind'),
+        );
     }
 
     public function source(): string
@@ -90,14 +119,20 @@ class UploadStatementRequest extends FormRequest
         return StatementFormatDetector::normalizeSource($this->input('source'));
     }
 
+    public function statementKind(): ?string
+    {
+        return StatementFormatDetector::normalizeKind($this->input('statement_kind'));
+    }
+
     /**
-     * @return array{format: 'csv'|'ofx', source: string}
+     * @return array{format: string, source: string}
      */
     public function detection(): array
     {
         return StatementFormatDetector::detectForImport(
             $this->file('file'),
             $this->input('source'),
+            $this->input('statement_kind'),
         );
     }
 

@@ -37,8 +37,8 @@ Documentação canônica:
 ## Principais Funcionalidades
 
 - **Login single-admin** — sessão Laravel + CSRF; sem registro público, Sanctum ou OAuth.
-- **Importação de extratos** — drag-and-drop (CSV / OFX / QFX), validação client+server (máx. 10 MB), resumo de importadas / ignoradas / erros.
-- **Parse Nubank** — `NubankCsvParser` e `OfxParser` com fixtures e testes.
+- **Importação de extratos** — drag-and-drop (CSV / OFX / QFX conta; fatura de cartão Nubank via **CSV**); validação client+server (máx. 10 MB); resumo de importadas / ignoradas / erros.
+- **Parse Nubank** — `NubankCsvParser`, `NubankCreditCardCsvParser` e `OfxParser` (banking) com fixtures e testes (`source` / `statement_kind` no upload). OFX de fatura = backlog.
 - **Deduplicação** — hashes estáveis; reupload não duplica movimentações.
 - **Dashboard analítico** — 4 metric cards, evolução por período, distribuição por categoria, tabela paginada.
 - **Filtros dinâmicos** — período (presets), tipo (entradas/saídas), categoria, busca por descrição (sincronizados na URL).
@@ -142,7 +142,28 @@ Em seguida:
 php artisan migrate --seed
 ```
 
-O seeder cria o **admin** (`ADMIN_EMAIL` / `ADMIN_PASSWORD`), categorias base e, em `local`/`development`/`testing`, dados demo de transações.
+O seeder cria o **admin** (`ADMIN_EMAIL` / `ADMIN_PASSWORD`, `role=admin`), **cotas** (`RoleLimitsSeeder`), categorias base e, em `local`/`development`/`testing`, logins demo dos demais papéis (`DemoRoleUsersSeeder`: `DEMO_*_EMAIL` / `DEMO_*_PASSWORD`) e dados demo de transações.
+
+**Expansão multi-usuário (Etapa F)** — se o banco já existia sem as migrations `2026_09_29_*`:
+
+```bash
+# Backup antes
+mysqldump -u aura_dev -p aura > backup_pre_expansao.sql
+
+php artisan migrate
+php artisan aura:backfill-transaction-user-id   # idempotente
+php artisan db:seed --class=Database\\Seeders\\RoleLimitsSeeder
+php artisan db:seed --class=Database\\Seeders\\AdminUserSeeder
+```
+
+Detalhes, ordem das migrations e rollback: `docs/PLAN_EXPANSAO.md` §1.6 · produção: `docs/DEPLOY_HOSTGATOR.md` §5.6.
+
+**Produção (Etapa G / §9.3)** — após merge em `main` (CI faz FTP + migrate + backfill + `RoleLimitsSeeder`):
+
+1. Backup SQL fresco no HostGator.
+2. Confirmar `.env` live com `AURA_LIMIT_*` e, se rollout gradual, `AURA_FEATURE_*=false` nos pilares ainda não liberados.
+3. Seguir sequência `down` → migrate → backfill → seeds → caches → `up` em `docs/DEPLOY_HOSTGATOR.md` §5.6.
+4. Smoke operador (login multi-papel, CRUD, CC, metas, cotas).
 
 ### 5. Subir a aplicação (recomendado: same-origin)
 

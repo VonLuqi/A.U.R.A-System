@@ -2,6 +2,7 @@
 
 namespace App\DTOs;
 
+use App\Enums\StatementFormat;
 use App\Models\StatementImport;
 use InvalidArgumentException;
 
@@ -33,8 +34,10 @@ final readonly class UploadSummary
             throw new InvalidArgumentException('importId must be >= 1.');
         }
 
-        if (! in_array($this->format, ['csv', 'ofx'], true)) {
-            throw new InvalidArgumentException("format must be csv|ofx, got [{$this->format}].");
+        if (! in_array($this->format, StatementFormat::values(), true)) {
+            throw new InvalidArgumentException(
+                'format must be '.implode('|', StatementFormat::values()).", got [{$this->format}]."
+            );
         }
 
         foreach (['rowsTotal', 'rowsImported', 'rowsSkipped'] as $counter) {

@@ -9,13 +9,14 @@
 
 | Regra | Como aplicar |
 | --- | --- |
-| Origem do formato | Espelha export de **conta** Nubank (app/site → CSV). **Não** é fatura de cartão de crédito. |
+| Origem do formato | Espelha export de **conta** Nubank (app/site → CSV) ou **fatura de cartão** (`nubank_credit_card_sample.csv`). |
 | Nomes / PIX / e-mails | Placeholders: `[PESSOA A]`, `[PESSOA B]`, `[PIX_KEY]`, `[EMPRESA]` |
 | CPF / CNPJ | Removidos (não devem aparecer) |
-| Datas / valores | Mantêm formato real (`dd/mm/yyyy`, `1.234,56` / `-89,90`) |
+| Datas / valores | Conta: `dd/mm/yyyy` + `1.234,56`. Cartão moderno: ISO `yyyy-mm-dd` + `89.90` / `-18.90` |
 | Descrições comerciais | Genéricas (`Supermercado Extra`, `Uber *Trip`, `Netflix.Com`) |
 | Identificadores | UUIDs / tokens fictícios (`00000000-…`, `abc-001`, `nubank-fitid-001`) |
 | Conta OFX | `ACCTID` anon (`0001-ANON`); org `NUBANK` / FID `260` são públicos |
+
 
 Checklist antes de adicionar fixture:
 
@@ -72,6 +73,35 @@ Headers observados no export de conta: `Data`, `Valor`, `Identificador`, `Descri
 | `nubank/sample_account_invalid_rows.csv` | Linhas curtas / valor inválido + válidas (§3.4.4) |
 | `nubank/sample_account_realistic_anon.csv` | Amostra estendida estilo conta (PIX/boleto com placeholders §7.2) |
 
+## Perfil expansão — Nubank fatura cartão CSV (PLAN_EXPANSAO §5.1)
+
+Fonte: exportação de **fatura de cartão de crédito** Nubank (não extrato de conta).
+
+| Header (case-insensitive) | Campo Aura |
+| --- | --- |
+| `date` / `Data` | `occurredOn` (`DateNormalizer::fromAny` — ISO ou BR) |
+| `title` / `Descrição` / `titulo` | `description` |
+| `amount` / `Valor` | `amount` + `type` (sinal invertido vs conta — ver abaixo) |
+| `category` | `raw_payload.nubank_category` (opcional) |
+
+### Conta vs fatura (detecção)
+
+| Sinal | Conta (`csv` / `NubankCsvParser`) | Fatura (`csv_credit_card` / `NubankCreditCardCsvParser`) |
+| --- | --- | --- |
+| Headers típicos | `Data`, `Valor`, `Identificador`, `Descrição` | `date`, `title`, `amount` [, `category`] |
+| `source` persistido | `nubank` / `other` | `nubank_credit` |
+| Valor positivo | `credit` (entrada) | `debit` (compra) |
+| Valor negativo | `debit` (saída) | `credit` (estorno) |
+| Linhas ignoradas | valor zero | `Pagamento recebido`, totais, valor zero (`config('aura.statements.credit_card_skip_patterns')`) |
+
+Override no upload: `source=nubank_credit` ou `statement_kind=checking|credit_card`.
+
+### Arquivos
+
+| Arquivo | Propósito |
+| --- | --- |
+| `nubank_credit_card_sample.csv` | Happy path fatura (compras / estorno / pagamento / total) |
+
 ## Perfil MVP — OFX / QFX (§3.5)
 
 Lib: `cihansenturk/ofxparser` (SGML OFX bancário BR + QFX).
@@ -83,7 +113,14 @@ Lib: `cihansenturk/ofxparser` (SGML OFX bancário BR + QFX).
 | `MEMO` / `NAME` | `description` (preferir MEMO) |
 | `FITID` | `externalId` |
 
+### Limitação — fatura cartão OFX (PLAN_EXPANSAO §5.3)
+
+`OfxParser` itera **apenas** `$ofx->bankAccounts` (banking `BANKMSGSRSV1`).  
+Fatura de cartão em OFX (`CREDITCARDMSGSRSV1`) **não** é requisito deste ciclo: sem fixture CC OFX, sem `source=nubank_credit` no parser OFX, sem regras de skip/sinal de fatura.
+
+**Use CSV de fatura** (`nubank_credit_card_sample.csv` / `NubankCreditCardCsvParser`). OFX cartão → backlog explícito em `docs/PLAN_EXPANSAO.md`.
+
 | Arquivo | Propósito |
 | --- | --- |
-| `ofx/sample_nubank.ofx` | Happy path SGML anonimizado (débito/crédito/MEMO/NAME/zero) |
+| `ofx/sample_nubank.ofx` | Happy path SGML **conta** anonimizado (débito/crédito/MEMO/NAME/zero) |
 | `ofx/sample_malformed.ofx` | Sem `<OFX>` → `InvalidStatementException` |

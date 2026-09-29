@@ -45,6 +45,53 @@ class TransactionQueryServiceTest extends TestCase
         $this->assertSame(['Mine #1'], $ids);
     }
 
+    public function test_includes_manual_transactions_via_user_id_scope(): void
+    {
+        $user = User::factory()->create();
+        $other = User::factory()->create();
+
+        Transaction::factory()->manual()->for($user)->create([
+            'description' => 'Manual mine',
+            'occurred_on' => '2026-09-12',
+        ]);
+        Transaction::factory()->manual()->for($other)->create([
+            'description' => 'Manual other',
+            'occurred_on' => '2026-09-12',
+        ]);
+        Transaction::factory()
+            ->for(StatementImport::factory()->for($user), 'statementImport')
+            ->create([
+                'description' => 'Imported mine',
+                'occurred_on' => '2026-09-11',
+            ]);
+
+        $descriptions = $this->service()
+            ->baseForUser($user)
+            ->orderBy('description')
+            ->pluck('description')
+            ->all();
+
+        $this->assertSame(['Imported mine', 'Manual mine'], $descriptions);
+    }
+
+    public function test_foreign_statement_import_id_filter_returns_empty_for_other_owner(): void
+    {
+        $user = User::factory()->create();
+        $other = User::factory()->create();
+        $foreignImport = StatementImport::factory()->for($other)->create();
+
+        Transaction::factory()->for($foreignImport, 'statementImport')->create([
+            'description' => 'Foreign',
+        ]);
+
+        $this->assertSame(
+            0,
+            $this->service()->forUser($user, [
+                'statement_import_id' => $foreignImport->id,
+            ])->count()
+        );
+    }
+
     public function test_applies_date_type_category_q_and_import_filters_via_scopes(): void
     {
         $user = User::factory()->create();

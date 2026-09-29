@@ -67,6 +67,8 @@ Fonte: `.env.production.example` (valores canônicos). No servidor, preencher s�
 | `RATE_LIMIT_UPLOAD_PER_USER` | `10` |
 | `STATEMENT_RETENTION_DAYS` | `90` |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | **secreto** (≥16 chars; AdminUserSeeder) |
+| `AURA_LIMIT_*` | Cotas por papel (`config/aura.php` / RoleLimitsSeeder); `0` = ilimitado — ver `.env.production.example` |
+| `AURA_FEATURE_*` | Rollout gradual Etapa G (`true`/`false`); após mudar → `config:cache` |
 | `VITE_APP_NAME` | `"${APP_NAME}"` (informativa; assets já no build) |
 
 ### O que **não** colocar em produção (§3.3)
@@ -75,7 +77,7 @@ Fonte: `.env.production.example` (valores canônicos). No servidor, preencher s�
 |----------|-------------------|
 | `APP_DEBUG=true` | Template: `false`; forçar erro live → JSON genérico |
 | Credenciais locais | Sem `aura_dev` / `ChangeMeNow!123`; DB = `luca9682_*`; admin real no cofre |
-| `db:seed` completo às cegas | `DemoTransactionSeeder` é no-op fora de `local`/`development`/`testing`, mas **não** rodar DatabaseSeeder em prod; admin só via `AdminUserSeeder` controlado |
+| `db:seed` completo às cegas | `DemoTransactionSeeder` / `DemoRoleUsersSeeder` são no-op fora de `local`/`development`/`testing`, mas **não** rodar DatabaseSeeder em prod; admin só via `AdminUserSeeder` controlado |
 | Keys AWS / Redis | Ausentes do `.env.production.example`; MVP não usa |
 | `MAIL_MAILER=smtp` + senhas | Template: `MAIL_MAILER=log` até e-mail ser necessário |
 
@@ -685,13 +687,15 @@ Deploy SSH / **Migrate HostGator** já usam `migrate --force` sem seed.
 | `statement_imports.purged_at` (+ index) | `2026_09_28_001133_add_purged_at_to_statement_imports_table` |
 | `transactions` | `2026_09_27_233436_create_transactions_table` |
 
-Índices `transactions`: `unique(unique_hash)`, `index(occurred_on)`, `index(type)`, `index(category_id)`, `index(occurred_on, type)`.
+Índices `transactions` (MVP): `unique(unique_hash)`, `index(occurred_on)`, `index(type)`, `index(category_id)`, `index(occurred_on, type)`.
+
+> **Expansão Etapa F:** ver §5.6 — `user_id` NOT NULL + `unique(user_id, unique_hash)` substituem o unique global.
 
 Inspeção: phpMyAdmin → `luca9682_aura` → Structure; ou `$PHP_BIN artisan db:show` / `migrate:status`.
 
 ### Seeder admin controlado (§5.3)
 
-**Nunca** `db:seed` completo em prod (puxa `DemoTransactionSeeder` via `DatabaseSeeder`). Demo é no-op fora de local, mas ainda assim usar classes explícitas:
+**Nunca** `db:seed` completo em prod (puxa seeders demo via `DatabaseSeeder`). Demo (`DemoTransactionSeeder`, `DemoRoleUsersSeeder`) é no-op fora de local, mas ainda assim usar classes explícitas:
 
 ``bash
 cd /home4/luca9682/aura
@@ -700,14 +704,84 @@ PHP_BIN=/opt/cpanel/ea-php82/root/usr/bin/php
 # ANTES: ADMIN_EMAIL + ADMIN_PASSWORD fortes no .env (≥16 chars); NUNCA ChangeMeNow!123
 $PHP_BIN artisan db:seed --class=Database\\Seeders\\AdminUserSeeder --force
 $PHP_BIN artisan db:seed --class=Database\\Seeders\\CategorySeeder --force
+
+# Expansão F — após migrations §5.6:
+$PHP_BIN artisan db:seed --class=Database\\Seeders\\RoleLimitsSeeder --force
 ``
 
 | Regra | Detalhe |
 |-------|---------|
-| Idempotência | `AdminUserSeeder` = `updateOrCreate` por e-mail; `CategorySeeder` por slug |
+| Idempotência | `AdminUserSeeder` = `updateOrCreate` por e-mail; `CategorySeeder` por slug; `RoleLimitsSeeder` por `role` |
 | MVP senha | Manter `ADMIN_PASSWORD` no cofre + `.env` `chmod 600`; **nunca** no Git |
-| Single-user | phpMyAdmin → `users`: 1 linha = admin esperado |
+| Papéis | Após expansão: admin com `role=admin`; cotas em `role_limits` |
 | Login | Validar na UI (§7) com as mesmas credenciais |
+
+### Expansão Etapa F/G — migrate multi-tenant / RBAC (§5.6)
+
+Espelho de `docs/PLAN_EXPANSAO.md` §1.6 + §9.3. **Backup SQL obrigatório** antes (`§2.4` / `aura-pre-expansao-YYYYMMDD.sql`).
+
+#### Sequência operacional (cutover)
+
+``bash
+cd /home4/luca9682/aura
+PHP_BIN=/opt/cpanel/ea-php82/root/usr/bin/php
+
+# 0) Backup fresco (phpMyAdmin Export ou mysqldump) — NUNCA pular
+# mysqldump -u luca9682_vonluqi -p luca9682_aura > ~/backups/aura-pre-expansao-$(date +%Y%m%d).sql
+
+# 1) Manutenção (opcional mas recomendado durante migrate)
+$PHP_BIN artisan down --render="errors::503" --retry=60 || true
+
+# 2) Deploy de código: push em main → GitHub Actions FTP+SSH, OU sync manual
+#    (CI já roda migrate + backfill + RoleLimitsSeeder + caches — ver deploy-hostgator.yml)
+
+# 3) Se deploy manual / FTP sem CI SSH:
+$PHP_BIN artisan migrate --force
+$PHP_BIN artisan aura:backfill-transaction-user-id
+# $PHP_BIN artisan aura:backfill-transaction-user-id --dry-run
+
+# 4) Seeds controlados (nunca DatabaseSeeder completo; nunca DemoRoleUsersSeeder em prod)
+$PHP_BIN artisan db:seed --class=Database\\Seeders\\RoleLimitsSeeder --force
+$PHP_BIN artisan db:seed --class=Database\\Seeders\\AdminUserSeeder --force
+
+# 5) Caches
+$PHP_BIN artisan config:cache && $PHP_BIN artisan route:cache && $PHP_BIN artisan view:cache || true
+
+# 6) Sair de manutenção
+$PHP_BIN artisan up
+``
+
+| Migration expansão | Efeito |
+|--------------------|--------|
+| `2026_09_29_140000_*` | `users.role`, counters de cota |
+| `2026_09_29_140100_*` | `role_limits` |
+| `2026_09_29_141000_*` | `transactions.user_id` nullable + `source_kind` |
+| `2026_09_29_141100_*` | backfill + `user_id` NOT NULL + `unique(user_id, unique_hash)` |
+| `2026_09_29_142000_*` | `goals` |
+| `2026_09_29_143000_*` | `transaction_aliases` |
+| `2026_09_29_144000_*` | `format`/`source` VARCHAR(32) (CC) |
+
+**Feature flags (rollout gradual):** no `.env` live, `AURA_FEATURE_*=false` desliga o pilar sem redeploy de código (`config/aura.php` → Gates + SPA). Defaults `true`. Após mudar: `config:cache`.
+
+| Flag | Pilar |
+|------|-------|
+| `AURA_FEATURE_MANUAL_TRANSACTIONS` | CRUD manual |
+| `AURA_FEATURE_GOALS` | Metas |
+| `AURA_FEATURE_ALIASES` | Apelidos |
+| `AURA_FEATURE_CREDIT_CARD_UPLOAD` | Fatura CC no upload |
+| `AURA_FEATURE_ADMIN_USERS` | Painel Admin usuários |
+
+**Rollback da 141100 (evitar em prod):** só com backup fresco; confirmar que não há colisão de `unique_hash` entre users antes de recriar o unique global; preferir forward-fix.
+
+#### Smoke checklist pós-cutover (operador)
+
+1. Login Admin + criar Visitante no `/admin/users`; logout → login Visitante (isolamento).
+2. CRUD manual de transação + “Lembrar apelido” + meta + date range Custom no dashboard.
+3. Upload fatura cartão (`statement_kind=credit_card`) → resumo com `rows_imported` > 0.
+4. Visitante: esgotar cota de upload → **429** `usage_limit_exceeded` com mensagem clara.
+5. Console: assets 200; sem erros críticos de rota SPA.
+
+Aceitação automatizada (proxy local do smoke): `php artisan test --filter=Expansion`.
 
 ### Migrate sem shell — fallback (§5.4)
 

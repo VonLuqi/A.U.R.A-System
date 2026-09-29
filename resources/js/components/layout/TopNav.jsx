@@ -1,13 +1,10 @@
-﻿import { useEffect, useId, useState } from 'react';
+﻿import { useEffect, useId, useMemo, useState } from 'react';
 import { Menu, X } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
+import { useAuth } from '../../hooks/useAuth';
+import { navItemsFor } from '../../lib/auth';
 import BrandMark from '../ui/BrandMark';
 import UserMenu from './UserMenu';
-
-const NAV_ITEMS = [
-    { to: '/dashboard', label: 'Visão geral', end: true },
-    { to: '/upload', label: 'Importar', end: false },
-];
 
 function navLinkClass({ isActive }) {
     return [
@@ -30,13 +27,15 @@ function mobileLinkClass({ isActive }) {
 }
 
 /**
- * TopNav — Etapa D §2.2.
- * Desktop: links inline. Mobile: hamburger + sheet leve.
+ * TopNav — Etapa D §2.2 / PLAN_EXPANSAO §8.1.
+ * Itens filtrados por `abilities` / papel via `navItemsFor(user)`.
  */
 export default function TopNav() {
+    const { user } = useAuth();
     const [menuOpen, setMenuOpen] = useState(false);
     const location = useLocation();
     const menuId = useId();
+    const navItems = useMemo(() => navItemsFor(user), [user]);
 
     useEffect(() => {
         setMenuOpen(false);
@@ -71,7 +70,7 @@ export default function TopNav() {
                     </NavLink>
 
                     <nav className="hidden items-center gap-6 sm:flex" aria-label="Principal">
-                        {NAV_ITEMS.map((item) => (
+                        {navItems.map((item) => (
                             <NavLink
                                 key={item.to}
                                 to={item.to}
@@ -109,7 +108,7 @@ export default function TopNav() {
                     className="border-t border-border-subtle bg-canvas px-6 py-3 sm:hidden"
                 >
                     <nav className="flex flex-col gap-1" aria-label="Principal mobile">
-                        {NAV_ITEMS.map((item) => (
+                        {navItems.map((item) => (
                             <NavLink
                                 key={item.to}
                                 to={item.to}

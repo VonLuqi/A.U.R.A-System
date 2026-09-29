@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
+use App\Http\Resources\AuthUserResource;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -50,14 +51,10 @@ class AuthenticatedSessionController extends Controller
     }
 
     /**
-     * @return array{id: int, name: string, email: string}
+     * @return array<string, mixed>
      */
     private function userPayload(User $user): array
     {
-        return [
-            'id' => $user->id,
-            'name' => $user->name,
-            'email' => $user->email,
-        ];
+        return (new AuthUserResource($user))->resolve();
     }
 }

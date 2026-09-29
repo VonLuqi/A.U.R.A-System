@@ -3,6 +3,7 @@
 namespace Tests\Unit\Parsers;
 
 use App\Exceptions\UnsupportedStatementFormatException;
+use App\Parsers\NubankCreditCardCsvParser;
 use App\Parsers\NubankCsvParser;
 use App\Parsers\OfxParser;
 use App\Parsers\StatementParserResolver;
@@ -60,6 +61,10 @@ class StatementParserResolverTest extends TestCase
         $this->assertSame($a, $b);
         $this->assertInstanceOf(NubankCsvParser::class, $a->resolve('csv', 'nubank'));
         $this->assertInstanceOf(OfxParser::class, $a->resolve('ofx', 'nubank'));
+        $this->assertInstanceOf(
+            NubankCreditCardCsvParser::class,
+            $a->resolve('csv_credit_card', 'nubank_credit')
+        );
     }
 
     public function test_unsupported_format_renders_as_json_422(): void

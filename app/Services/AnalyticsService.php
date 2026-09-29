@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\TransactionAlias;
 use App\Models\User;
+use App\Support\DateRangeQuery;
 use Illuminate\Support\Arr;
 
 /**
@@ -24,6 +26,7 @@ final class AnalyticsService
 {
     public function __construct(
         private readonly TransactionQueryService $transactions,
+        private readonly DashboardGoalsAggregator $goalsAggregator,
     ) {}
 
     /**
@@ -43,19 +46,63 @@ final class AnalyticsService
      *         total: string,
      *         count: int,
      *         type: string
-     *     }>
+     *     }>,
+     *     by_alias: list<array{
+     *         alias_id: int|null,
+     *         name: string,
+     *         color: string|null,
+     *         total: string,
+     *         count: int,
+     *         type: string
+     *     }>,
+     *     goals: array{
+     *         items: list<array<string, mixed>>,
+     *         active_count: int,
+     *         completed_count: int,
+     *         paused_count: int,
+     *         goals_used: int,
+     *         goals_remaining: int|null,
+     *         cards: array{
+     *             average_progress_percent: float|null,
+     *             nearest_deadline: array<string, mixed>|null
+     *         }
+     *     }
      * }
      */
     public function dashboard(User $user, array $filters = []): array
     {
-        $groupBy = ($filters['group_by'] ?? 'month') === 'day' ? 'day' : 'month';
-        $queryFilters = Arr::except($filters, ['group_by']);
+        $groupBy = $this->resolveSeriesGroupBy($filters);
+        $queryFilters = Arr::except($filters, ['group_by', 'preset']);
 
         return [
             'cards' => $this->cards($user, $queryFilters),
             'series' => $this->series($user, $queryFilters, $groupBy),
             'by_category' => $this->byCategory($user, $queryFilters),
+            'by_alias' => $this->byAlias($user, $queryFilters),
+            'goals' => $this->goalsAggregator->forUser($user),
         ];
+    }
+
+    /**
+     * Prefer explicit group_by; otherwise DateRangeQuery::resolveGroupBy (≤45 → day).
+     *
+     * @param  AnalyticsFilters  $filters
+     * @return 'day'|'month'
+     */
+    private function resolveSeriesGroupBy(array $filters): string
+    {
+        $explicit = $filters['group_by'] ?? null;
+        if ($explicit === 'day' || $explicit === 'month') {
+            return $explicit;
+        }
+
+        $from = $filters['from'] ?? null;
+        $to = $filters['to'] ?? null;
+        if (is_string($from) && $from !== '' && is_string($to) && $to !== '') {
+            return DateRangeQuery::resolveGroupBy($from, $to);
+        }
+
+        return 'month';
     }
 
     /**
@@ -171,6 +218,96 @@ final class AnalyticsService
                 'count' => (int) $row->count,
                 'type' => $effectiveType,
             ];
+        }
+
+        return $items;
+    }
+
+    /**
+     * Debit totals grouped by alias display_name (identical names merge into one bar).
+     *
+     * Only transactions with `raw_payload.alias_id` (matched by AliasResolutionService).
+     *
+     * @param  AnalyticsFilters  $filters
+     * @return list<array{
+     *     alias_id: int|null,
+     *     name: string,
+     *     color: string|null,
+     *     total: string,
+     *     count: int,
+     *     type: string
+     * }>
+     */
+    public function byAlias(User $user, array $filters = []): array
+    {
+        $aliasFilters = $filters;
+        if (($aliasFilters['type'] ?? null) === null || $aliasFilters['type'] === '') {
+            $aliasFilters['type'] = 'debit';
+        }
+        $effectiveType = (string) $aliasFilters['type'];
+
+        $aliasNames = TransactionAlias::query()
+            ->forUser($user)
+            ->get(['id', 'display_name'])
+            ->keyBy('id');
+
+        if ($aliasNames->isEmpty()) {
+            return [];
+        }
+
+        $transactions = $this->transactions->baseForUser($user, $aliasFilters)
+            ->get(['amount', 'raw_payload']);
+
+        /** @var array<string, array{alias_id: int, name: string, total: float, count: int}> $buckets */
+        $buckets = [];
+
+        foreach ($transactions as $transaction) {
+            $payload = is_array($transaction->raw_payload) ? $transaction->raw_payload : [];
+            $aliasId = isset($payload['alias_id']) ? (int) $payload['alias_id'] : null;
+            if ($aliasId === null || $aliasId < 1) {
+                continue;
+            }
+
+            $alias = $aliasNames->get($aliasId);
+            if ($alias === null) {
+                continue;
+            }
+
+            $name = trim((string) $alias->display_name);
+            if ($name === '') {
+                continue;
+            }
+
+            $key = mb_strtolower($name);
+            if (! isset($buckets[$key])) {
+                $buckets[$key] = [
+                    'alias_id' => $aliasId,
+                    'name' => $name,
+                    'total' => 0.0,
+                    'count' => 0,
+                ];
+            }
+
+            $buckets[$key]['total'] += (float) $transaction->amount;
+            $buckets[$key]['count']++;
+        }
+
+        uasort($buckets, static fn (array $a, array $b): int => $b['total'] <=> $a['total']);
+
+        $palette = ['#DCCFFF', '#A8E6C3', '#9A9C9B', '#F5C6AA', '#B8D4E8', '#E8D5B7', '#C5B4E3'];
+        $items = [];
+        $index = 0;
+
+        foreach ($buckets as $bucket) {
+            $items[] = [
+                'alias_id' => $bucket['alias_id'],
+                'name' => $bucket['name'],
+                'color' => $palette[$index % count($palette)],
+                'total' => $this->money($bucket['total']),
+                'count' => $bucket['count'],
+                'type' => $effectiveType,
+            ];
+            $index++;
         }
 
         return $items;

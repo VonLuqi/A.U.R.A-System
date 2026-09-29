@@ -9,6 +9,7 @@ const PERIOD_OPTIONS = [
 
 /**
  * PeriodPills — Etapa D §4.5.1.
+ * Preferir `DateRangePicker` no dashboard (§8.3) — inclui Custom + limite do papel.
  *
  * @param {{
  *   value: string,

@@ -46,13 +46,26 @@ class DashboardAnalyticsEndpointTest extends TestCase
         $response->assertOk()
             ->assertJsonStructure([
                 'data' => [
-                    'filters' => ['from', 'to', 'type', 'category_id', 'q', 'group_by'],
+                    'filters' => ['from', 'to', 'type', 'category_id', 'q', 'group_by', 'preset'],
                     'cards' => ['balance', 'total_income', 'total_expense', 'transactions_count'],
                     'series' => [
                         ['period', 'income', 'expense', 'balance'],
                     ],
                     'by_category' => [
                         ['category_id', 'name', 'color', 'total', 'count', 'type'],
+                    ],
+                    'by_alias' => [],
+                    'goals' => [
+                        'items',
+                        'active_count',
+                        'completed_count',
+                        'paused_count',
+                        'goals_used',
+                        'goals_remaining',
+                        'cards' => [
+                            'average_progress_percent',
+                            'nearest_deadline',
+                        ],
                     ],
                 ],
             ])

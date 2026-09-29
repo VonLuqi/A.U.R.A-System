@@ -4,8 +4,8 @@ import { getErrorMessage } from '../lib/errors';
 import { toAnalyticsParams } from '../lib/apiParams';
 
 /**
- * useDashboardAnalytics — Etapa D §4.3.
- * Refetch quando from/to/type/category_id/q/group_by mudam (não page).
+ * useDashboardAnalytics — Etapa D §4.3 / PLAN_EXPANSAO §6.2.
+ * Refetch quando from/to/preset/type/category_id/q/group_by mudam (não page).
  */
 export function useDashboardAnalytics(filters) {
     const [data, setData] = useState(null);

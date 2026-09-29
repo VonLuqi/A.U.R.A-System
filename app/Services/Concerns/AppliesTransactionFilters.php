@@ -59,6 +59,7 @@ trait AppliesTransactionFilters
 
         $importId = $filters['statement_import_id'] ?? null;
         if ($importId !== null) {
+            // Combined with forUser()/user_id: foreign import ids simply yield empty sets.
             $query->where('transactions.statement_import_id', (int) $importId);
         }
 

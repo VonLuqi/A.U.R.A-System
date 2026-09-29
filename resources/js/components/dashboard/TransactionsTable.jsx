@@ -1,4 +1,4 @@
-﻿import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
+﻿import { ArrowDown, ArrowUp, ArrowUpDown, BookmarkPlus, Pencil, Trash2 } from 'lucide-react';
 import { formatDate, signedMoney } from '../../lib/format';
 import Badge from '../ui/Badge';
 import Card from '../ui/Card';
@@ -64,7 +64,73 @@ function CategoryCell({ category }) {
     );
 }
 
-function TableHeader({ sort, direction, onSort }) {
+function RowActions({
+    row,
+    canRememberAlias,
+    onEdit,
+    onDelete,
+    onRememberAlias,
+}) {
+    const showEdit = Boolean(row.editable) && typeof onEdit === 'function';
+    const showDelete = Boolean(row.deletable) && typeof onDelete === 'function';
+    const showRemember = canRememberAlias && typeof onRememberAlias === 'function';
+
+    if (!showEdit && !showDelete && !showRemember) {
+        return <span className="text-ink-muted">—</span>;
+    }
+
+    return (
+        <div className="flex items-center justify-end gap-1">
+            {showEdit ? (
+                <IconAction
+                    label={`Editar ${row.description || 'lançamento'}`}
+                    onClick={() => onEdit(row)}
+                >
+                    <Pencil size={16} strokeWidth={1.75} aria-hidden />
+                </IconAction>
+            ) : null}
+            {showRemember ? (
+                <IconAction
+                    label={`Lembrar apelido de ${row.description || 'lançamento'}`}
+                    onClick={() => onRememberAlias(row)}
+                >
+                    <BookmarkPlus size={16} strokeWidth={1.75} aria-hidden />
+                </IconAction>
+            ) : null}
+            {showDelete ? (
+                <IconAction
+                    label={`Excluir ${row.description || 'lançamento'}`}
+                    tone="danger"
+                    onClick={() => onDelete(row)}
+                >
+                    <Trash2 size={16} strokeWidth={1.75} aria-hidden />
+                </IconAction>
+            ) : null}
+        </div>
+    );
+}
+
+function IconAction({ label, onClick, children, tone = 'default' }) {
+    return (
+        <button
+            type="button"
+            className={[
+                'inline-flex h-9 w-9 items-center justify-center rounded-full transition',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
+                tone === 'danger'
+                    ? 'text-ink-secondary hover:bg-surface-raised hover:text-feedback-danger'
+                    : 'text-ink-secondary hover:bg-surface-raised hover:text-ink',
+            ].join(' ')}
+            aria-label={label}
+            title={label}
+            onClick={onClick}
+        >
+            {children}
+        </button>
+    );
+}
+
+function TableHeader({ sort, direction, onSort, showActions }) {
     return (
         <thead>
             <tr className="border-b border-border-subtle">
@@ -102,6 +168,14 @@ function TableHeader({ sort, direction, onSort }) {
                     onSort={onSort}
                     className="min-w-[8rem] text-right"
                 />
+                {showActions ? (
+                    <th
+                        scope="col"
+                        className="sticky top-0 z-10 bg-surface px-4 py-3 text-right text-caption font-medium text-ink-secondary"
+                    >
+                        <span className="sr-only">Ações</span>
+                    </th>
+                ) : null}
             </tr>
         </thead>
     );
@@ -150,17 +224,10 @@ function TableEmptyState({
 }
 
 /**
- * TransactionsTable — Etapa D §4.7.1 / §4.7.3.
+ * TransactionsTable — Etapa D §4.7.1 / §4.7.3 / PLAN_EXPANSAO §8.2.
  *
  * @param {{
- *   rows?: Array<{
- *     id: number|string,
- *     occurred_on: string,
- *     description: string,
- *     amount: string|number,
- *     type: 'credit'|'debit'|string,
- *     category?: { id?: number, name?: string, color?: string|null }|null,
- *   }>,
+ *   rows?: Array<object>,
  *   sort?: string,
  *   direction?: 'asc'|'desc',
  *   onSortChange?: (next: { sort: string, direction: 'asc'|'desc' }) => void,
@@ -170,6 +237,10 @@ function TableEmptyState({
  *   hasTypeOrCategoryFilter?: boolean,
  *   hasSearchQuery?: boolean,
  *   looksEmptyAccount?: boolean,
+ *   canRememberAlias?: boolean,
+ *   onEdit?: (row: object) => void,
+ *   onDelete?: (row: object) => void,
+ *   onRememberAlias?: (row: object) => void,
  *   className?: string,
  * }} props
  */
@@ -184,8 +255,17 @@ export default function TransactionsTable({
     hasTypeOrCategoryFilter = false,
     hasSearchQuery = false,
     looksEmptyAccount = false,
+    canRememberAlias = false,
+    onEdit,
+    onDelete,
+    onRememberAlias,
     className = '',
 }) {
+    const showActions =
+        typeof onEdit === 'function' ||
+        typeof onDelete === 'function' ||
+        (canRememberAlias && typeof onRememberAlias === 'function');
+
     const handleSort = (column) => {
         if (!onSortChange) {
             return;
@@ -237,11 +317,12 @@ export default function TransactionsTable({
                 />
             ) : (
                 <div className="overflow-x-auto">
-                    <table className="min-w-[40rem] w-full border-collapse text-body text-ink">
+                    <table className="min-w-[44rem] w-full border-collapse text-body text-ink">
                         <TableHeader
                             sort={sort}
                             direction={direction}
                             onSort={handleSort}
+                            showActions={showActions}
                         />
                         <tbody className={status === 'loading' ? 'opacity-60' : undefined}>
                             {rows.map((row) => {
@@ -281,6 +362,17 @@ export default function TransactionsTable({
                                         >
                                             {signedMoney(row.type, row.amount)}
                                         </td>
+                                        {showActions ? (
+                                            <td className="whitespace-nowrap px-3 py-2 text-right">
+                                                <RowActions
+                                                    row={row}
+                                                    canRememberAlias={canRememberAlias}
+                                                    onEdit={onEdit}
+                                                    onDelete={onDelete}
+                                                    onRememberAlias={onRememberAlias}
+                                                />
+                                            </td>
+                                        ) : null}
                                     </tr>
                                 );
                             })}

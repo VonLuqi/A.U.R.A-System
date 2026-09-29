@@ -8,9 +8,10 @@ use App\Services\Concerns\AppliesTransactionFilters;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
- * Filtered transaction queries for the authenticated user (Etapa C §5.4.2).
+ * Filtered transaction queries for the authenticated user (Etapa C §5.4.2 / PLAN_EXPANSAO §2.2).
  *
- * Filter keys mirror IndexTransactionsRequest::filters() / DashboardAnalyticsRequest.
+ * Ownership is row-level via `transactions.user_id` (not only via statement_imports),
+ * so manual transactions (`source_kind=manual`, nullable import) stay in scope.
  *
  * @phpstan-type TransactionFilters array{
  *     from?: ?string,
@@ -38,9 +39,7 @@ final class TransactionQueryService
     {
         $query = Transaction::query()
             ->with(['category:id,name,slug,type,color'])
-            ->whereHas('statementImport', function (Builder $q) use ($user): void {
-                $q->where('user_id', $user->id);
-            });
+            ->forUser($user);
 
         $this->applyFilters($query, $filters);
         $this->applySort($query, $filters);
@@ -56,10 +55,7 @@ final class TransactionQueryService
      */
     public function baseForUser(User $user, array $filters = []): Builder
     {
-        $query = Transaction::query()
-            ->whereHas('statementImport', function (Builder $q) use ($user): void {
-                $q->where('user_id', $user->id);
-            });
+        $query = Transaction::query()->forUser($user);
 
         return $this->applyFilters($query, $filters);
     }

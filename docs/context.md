@@ -4,8 +4,9 @@
 > Qualquer agente de IA ou desenvolvedor deve consultar este arquivo antes de propor ou alterar código.
 > Atualize este documento quando escopo, stack ou restrições mudarem.
 >
-> **Status MVP (2026-09-29):** Etapas **A–E concluídas** (MVP HostGator live em `https://aura.vonluqi.com`).  
-> Planos: `docs/PLAN_ETAPA_C.md` · `docs/PLAN_ETAPA_D.md` · `docs/PLAN_ETAPA_E.md` · Roadmap: `docs/MASTER_PLAN.md` · Deploy: `docs/DEPLOY_HOSTGATOR.md` · Setup: `README.md`.
+> **Status (2026-09-29):** MVP Etapas **A–E concluídas** (live em `https://aura.vonluqi.com`).  
+> **Expansão (Etapa F):** multi-usuário RBAC, CRUD manual, metas, aliases, fatura CC — `docs/PLAN_EXPANSAO.md` · Roadmap: `docs/MASTER_PLAN.md`.  
+> Planos MVP: `docs/PLAN_ETAPA_C.md` · `docs/PLAN_ETAPA_D.md` · `docs/PLAN_ETAPA_E.md` · Deploy: `docs/DEPLOY_HOSTGATOR.md` · Setup: `README.md`.
 
 ---
 
@@ -35,15 +36,15 @@
 
 ### Propósito
 
-Plataforma web de **controle financeiro pessoal** orientada a inteligência e automação, de uso **exclusivo e individual** (single-user). O administrador importa extratos, deixa o sistema organizar e analisar os dados, e acompanha a saúde financeira com o mínimo de atrito operacional.
+Plataforma web de **controle financeiro pessoal** orientada a inteligência e automação. O MVP nasceu single-admin; a **Etapa F** expande para **multi-usuário com RBAC** (Admin, Subadmin, Visitante, Teste), isolamento de dados por `user_id` e cotas de uso. Cada usuário autentica, importa extratos (e, na expansão, lança CRUD manual / metas / aliases), e acompanha a saúde financeira com o mínimo de atrito operacional.
 
 ### Objetivos
 
-- Centralizar extratos bancários (início: **Nubank**, formatos CSV/OFX) em um banco estruturado (**Unificado**).
-- Automatizar o máximo possível do pós-importação (categorização e análises; regras no curto prazo, ML no médio prazo — **Assistente**).
-- Eliminar planilhas manuais como fonte primária de verdade.
-- Oferecer visualização clara de entradas, saídas e tendências com filtros dinâmicos (**Análises**).
-- Manter superfície de ataque mínima: **apenas o administrador** autenticado acessa o sistema.
+- Centralizar extratos bancários (início: **Nubank**, formatos CSV/OFX; expansão: fatura de cartão CSV) em um banco estruturado (**Unificado**).
+- Automatizar o máximo possível do pós-importação (categorização e análises; regras/aliases no curto prazo, ML no médio prazo — **Assistente**).
+- Eliminar planilhas manuais como fonte primária de verdade (CRUD manual complementar à importação).
+- Oferecer visualização clara de entradas, saídas, metas e tendências com filtros dinâmicos / date range (**Análises**).
+- Controlar acesso por papéis e cotas: Admin gerencia usuários; demais papéis operam só nos próprios dados, com limites configuráveis.
 
 
 
@@ -56,14 +57,25 @@ Plataforma web de **controle financeiro pessoal** orientada a inteligência e au
 
 
 
-### Fora de escopo (MVP)
+### Escopo atual vs. fora de escopo
 
-- Multi-usuário / multi-tenant
+**Em expansão (Etapa F — `docs/PLAN_EXPANSAO.md`)**
+
+- Multi-usuário / multi-tenant **row-level** (`user_id`) + RBAC + cotas
+- CRUD manual de transações
+- Parser CSV de fatura de cartão de crédito (Nubank)
+- Date range picker flexível
+- Metas financeiras (poupança / amortização)
+- Motor de apelidos/regras (aliases) na importação
+
+**Fora de escopo (ainda)**
+
 - Open Banking / APIs bancárias em tempo real
 - App mobile nativo
 - Contas a pagar/receber com recorrência automática (pode entrar em fases posteriores)
-- Integrações com cartões além do fluxo de upload de extrato
-- Motor de Machine Learning completo em produção (visão de produto; no MVP: importação + dashboard; categorização automática evolui após o core)
+- Sanctum / OAuth / registro público aberto (usuários criados pelo Admin ou seeders)
+- Schema-per-tenant / banco separado por usuário
+- Motor de Machine Learning completo em produção (aliases são o passo intermediário)
 
 
 
@@ -204,8 +216,17 @@ Plataforma web de **controle financeiro pessoal** orientada a inteligência e au
 | `QUEUE_CONNECTION` | sim         | `sync`                  | `sync`                     | Filas (MVP sync)                                      |
 | `LOG_LEVEL`        | sim         | `debug`                 | `error`                    | Verbosity                                             |
 | `VITE_APP_NAME`    | não         | `${APP_NAME}`           | igual                      | Exposto ao front                                      |
-| `ADMIN_EMAIL`      | sim         | `admin@aura.local`      | `(email real do admin)`    | Email do único usuário admin (`AdminUserSeeder`)      |
+| `ADMIN_EMAIL`      | sim         | `admin@aura.local`      | `(email real do admin)`    | Email do admin inicial (`AdminUserSeeder`, `role=admin`) |
 | `ADMIN_PASSWORD`   | sim         | `ChangeMeNow!123`       | `(senha forte)`            | Senha do admin — **nunca** no Git; trocar em produção |
+| `DEMO_SUBADMIN_EMAIL` / `_PASSWORD` | não | `subadmin@aura.local` | — | Login demo Subadmin (`DemoRoleUsersSeeder`, só local) |
+| `DEMO_VISITOR_EMAIL` / `_PASSWORD` | não | `visitor@aura.local` | — | Login demo Visitante (`DemoRoleUsersSeeder`, só local) |
+| `DEMO_TEST_EMAIL` / `_PASSWORD` | não | `test@aura.local` | — | Login demo Teste (`DemoRoleUsersSeeder`, só local) |
+| `AURA_LIMIT_UPLOAD_*` | não      | ver `.env.example`      | igual                      | Cotas de upload por papel (`config/aura.php`, `0`=∞) |
+| `AURA_LIMIT_MANUAL_TX_*` | não   | ver `.env.example`      | igual                      | Cotas de CRUD manual por papel |
+| `AURA_LIMIT_DATE_RANGE_DAYS_*` | não | ver `.env.example`    | igual                      | Amplitude máx. de date range (dias) por papel |
+| `AURA_LIMIT_GOALS_*` | não       | ver `.env.example`      | igual                      | Máx. de metas por papel |
+| `AURA_LIMIT_ALIASES_*` | não     | ver `.env.example`      | igual                      | Máx. de aliases por papel |
+| `AURA_FEATURE_*` | não         | `true`                  | `true` (ou `false` no rollout) | Feature flags Etapa G (`manual_transactions`, `goals`, `aliases`, `credit_card_upload`, `admin_users`) |
 | `RATE_LIMIT_LOGIN_PER_EMAIL` | não | `5`                   | `5`                        | Tentativas/min por email+IP (`throttle:login`)        |
 | `RATE_LIMIT_LOGIN_PER_IP` | não    | `20`                    | `20`                       | Tentativas/min por IP (`throttle:login`)              |
 | `RATE_LIMIT_UPLOAD_PER_USER` | não | `10`                   | `10`                       | Uploads/min por user (`throttle:statements-upload`)   |
@@ -232,7 +253,7 @@ Plataforma web de **controle financeiro pessoal** orientada a inteligência e au
 | Sanctum | Não usado no MVP | Evita dependência extra; same-origin / Vite proxy basta |
 | Session cookies | `lifetime=120`, `http_only=true`, `same_site=lax`, `secure` via `SESSION_SECURE_COOKIE` | Cookie HttpOnly; Secure só em HTTPS prod; Lax suficiente para SPA same-origin |
 | CSRF SPA | `GET /api/csrf-cookie` (204) + cookie `XSRF-TOKEN` / header `X-XSRF-TOKEN`; Axios `withCredentials` + `Accept: application/json` | Sem Sanctum; Vite proxy `/api` → Laravel em dev se origem ≠ Artisan |
-| Registro público | **Omitido** — sem rotas/controllers de register; sem Breeze/Fortify | Single-admin; usuários só via `AdminUserSeeder` |
+| Registro público | **Omitido** — sem rotas/controllers de register; sem Breeze/Fortify | MVP: `AdminUserSeeder`. Expansão: Admin cria via API; local também `DemoRoleUsersSeeder` |
 | Rate limiters nomeados | `login` (5/email+IP, 20/IP) + `statements-upload` (10/user) em `AppServiceProvider` | Middleware de rota na §1.7.2; envs `RATE_LIMIT_*` |
 | Login idempotente (`guest`) | Já autenticado em `POST /api/login` → `200` + user atual (não `409`/redirect) | SPA: re-login seguro sem erro; middleware `App\Http\Middleware\RedirectIfAuthenticated` |
 | Disk `statements` | `config/filesystems.php` → `storage/app/private/statements`, `visibility=private`, `throw=true`, `serve=false` | Extratos fora do web root; `local.serve=false` para não expor via `/storage/{path}` assinado |
@@ -251,7 +272,7 @@ Plataforma web de **controle financeiro pessoal** orientada a inteligência e au
 | Estilo | CSS variables (`tokens.css`) + Tailwind 3 + CSS Modules opcional | Espelha `docs/DESIGN-SYSTEM.MD`; dark only `#151716` |
 | Fonte | Poppins (`resources/css/fonts.css`) | Design System §2 |
 | Estado servidor | Context + hooks (React Query fora do MVP default) | Superfície pequena; evita deps extras |
-| Estado UI | `useState` + AuthContext + filtros (Context ou URL) | Simples e alinhado ao single-admin |
+| Estado UI | `useState` + AuthContext + filtros (Context ou URL) | Simples; expansão adiciona `role` / `abilities` no AuthContext |
 | HTTP | Axios (`resources/js/api/client.js` + `bootstrap.js`) — **sem** Sanctum | Session cookie + CSRF já definidos na Etapa C |
 | Toasts | `sonner` | Leve; themável com tokens Aura |
 | Upload DnD | `react-dropzone` | Validação de extensão/tamanho no client; parse só no server |
@@ -262,7 +283,7 @@ Plataforma web de **controle financeiro pessoal** orientada a inteligência e au
 | CSRF SPA | `GET /api/csrf-cookie` → `XSRF-TOKEN` / `X-XSRF-TOKEN` via Axios | Sem Sanctum; `api/auth.js` → `ensureCsrf()` |
 | Credentials | `withCredentials: true` (`api/client.js`) | Envia cookie de sessão nas chamadas `/api/*` |
 | Sanctum | **Não usado** | Decisão Etapa C mantida |
-| Registro UI | **Proibido** — zero tela/rota de register | Single-admin; só `AdminUserSeeder` |
+| Registro UI | **Proibido** registro público — zero tela self-service | Admin cria usuários no painel (Etapa F); seeders para bootstrap |
 | 401 no client | Interceptor Axios → `setUnauthorizedHandler` → limpar user + `/login` | Exceto `POST /api/login` e `GET /api/user` (guest bootstrap) |
 | Guest em `/login` | Se sessão válida (`GET /api/user` 200) → redirect `/dashboard` | Implementação UI: `GuestRoute` (§1.2.3) |
 | Rotas SPA (client) | `/login` (guest), `/` → redirect, `/dashboard` + `/upload` (auth), `*` → NotFound | `react-router-dom`; Laravel catch-all serve Blade; **sem** rotas `/api` no React |
@@ -272,12 +293,39 @@ Plataforma web de **controle financeiro pessoal** orientada a inteligência e au
 | Copy UI | Tom preciso, calmo, premium; wordmark Aura hero + tagline de apoio | Sem jargão técnico (“pipeline”, “ML”, “parser”) |
 | Upload UX (objetivo) | Admin envia CSV/OFX/QFX (Nubank) → resumo (importadas/puladas/erros) ou erro claro | Sem jargão; parse só no server; DnD + feedback na §3 |
 | Dashboard UX | Cards + filtros pills + gráficos + tabela paginada, **mesmos filtros** (URL sync) | Coerência cards↔charts↔tabela; `useDashboardFilters` + APIs analytics/transactions |
-| Filtros URL | `from`, `to`, `type`, `category_id`, `q`, `page`, `sort`, `direction` em searchParams | Shareable / refresh-safe |
+| Filtros URL | `from`, `to`, `preset` (`current_month\|last_30\|last_90\|custom`), `type`, `category_id`, `q`, `page`, `sort`, `direction` (+ `group_by` só na API analytics) | SPA grava `from`+`to`+`preset` (`useDashboardFilters`); omitidos → mês corrente; ≤45 dias → `group_by=day` |
 | Dev same-origin | `php artisan serve` + `npm run dev` (Vite HMR); proxy `/api` se origem `:5173` | Cookies/CSRF estáveis |
 | Smoke front | Vitest — `resources/js/lib/format.test.js` + `validators.test.js` | Opcional DoD; `npm test` |
 | DoD Etapa D | Concluído (`PLAN_ETAPA_D.md` §9) | — |
 | DoD Etapa E | Concluído (`PLAN_ETAPA_E.md` §9) · runbook `DEPLOY_HOSTGATOR.md` | Residual: cookie `Secure` + registro backup §8.1 |
 
+
+**Decisões Etapa F (expansão — contratos)**
+
+
+| Decisão | Valor | Motivo |
+| --- | --- | --- |
+| Multi-tenant | **Shared DB + row-level `user_id`** (`config/aura.php`) | HostGator shared; sem schema-per-tenant |
+| RBAC | Papéis `admin\|subadmin\|visitor\|test` (`App\Enums\UserRole`) | Gates/Policies consomem `config('aura.abilities')` |
+| Cotas | Tabela `role_limits` + counters em `users`; defaults via env `AURA_LIMIT_*` | `0` = ilimitado; Visitante/Teste em `quota_enforced_roles` |
+| Abilities | `users.manage`, `transactions.manage`, `statements.upload`, `goals.manage`, `aliases.manage` | Matriz congelada em `config/aura.php` |
+| Auth transport | Session cookie (`web`) — **sem Sanctum neste ciclo** | Same-origin SPA já estável no MVP |
+| Criação de usuários | Admin (API) + seeders; **sem** registro público | Menor superfície de ataque |
+| Contratos | `config/aura.php` · plano `docs/PLAN_EXPANSAO.md` · branch `feat/expansao-multiuser-metas-crud` | Fonte única para limites/abilities |
+
+
+### 2.6 Papéis (RBAC) e cotas
+
+| Papel | Valor | Capacidade resumida |
+| --- | --- | --- |
+| **Admin** | `admin` | Gestão de usuários, CRUD total, uploads/metas/aliases (cotas tipicamente ilimitadas). |
+| **Subadmin** | `subadmin` | Opera dados financeiros próprios; sem `users.manage`. |
+| **Visitante** | `visitor` | Leitura + writes com cotas baixas (upload, CRUD manual, date range, metas). |
+| **Teste** | `test` | Cotas agressivas para demos/QA; dados isolados por `user_id`. |
+
+Isolamento: queries e policies filtram por `transactions.user_id` / owner do recurso (`TransactionQueryService::forUser` / `baseForUser`, route bindings). Storage de extratos já usa `{userId}` no path.
+
+**Categorias (dívida técnica):** permanecem **globais** (`categories` sem `user_id`, seed `is_system`). Todos os papéis autenticados veem o mesmo catálogo. Categorias por usuário ficam fora deste ciclo.
 
 Variáveis adicionais presentes em `.env.example` (locale, mail log, Redis opcional, AWS placeholders) seguem defaults Laravel; não são críticas ao MVP HostGator e podem permanecer como no template.
 
@@ -289,18 +337,19 @@ Variáveis adicionais presentes em `.env.example` (locale, mail log, Redis opcio
 
 
 
-### 3.1 Autenticação — acesso único do Administrador
+### 3.1 Autenticação — sessão e papéis
 
-**Objetivo:** garantir que somente o administrador autentique e use a plataforma.
+**Objetivo (MVP):** garantir autenticação segura por sessão.  
+**Objetivo (Etapa F):** o mesmo mecanismo de sessão, com **múltiplos usuários** e autorização por papel (RBAC).
 
 **Requisitos funcionais**
 
 - Tela de login (e-mail/usuário + senha).
 - Sessão persistente segura (cookie HttpOnly, Secure, SameSite).
 - Logout explícito.
-- **Sem** rota de registro público; usuário admin criado via seeder/artisan ou instalação inicial.
-- **Registro público omitido na Etapa C:** não há `RegisteredUserController`, Breeze/Fortify nem `POST /api/register` / `POST /register`. Único caminho de criação de usuário no MVP: `AdminUserSeeder` (`ADMIN_EMAIL` / `ADMIN_PASSWORD`).
-- Rotas protegidas: upload, listagem, dashboard e APIs de filtro exigem autenticação.
+- **Sem** rota de registro público; bootstrap do Admin via `AdminUserSeeder`; em local, `DemoRoleUsersSeeder` cria Subadmin/Visitante/Teste; demais usuários criados pelo Admin (Etapa F) ou seeders.
+- **Registro público omitido:** não há `RegisteredUserController`, Breeze/Fortify nem `POST /api/register` / `POST /register`.
+- Rotas protegidas: upload, listagem, dashboard e APIs de filtro exigem autenticação; writes exigem ability + cota quando aplicável.
 - Após N falhas de login, aplicar throttle (ex.: rate limit Laravel).
 
 **Critérios de aceite**
@@ -353,13 +402,15 @@ Teste de contrato: `tests/Feature/HttpErrorContractTest.php`.
   - `GET /api/csrf-cookie`, `POST /api/login`, `POST /api/logout`, `GET /api/user`
   - `POST /api/statements/upload`, `GET /api/statements`, `GET /api/statements/{id}`
   - `GET /api/transactions`, `GET /api/analytics/dashboard`, `GET /api/categories`
+  - `GET|POST /api/goals`, `GET|PATCH|DELETE /api/goals/{goal}`, `POST /api/goals/{goal}/recalculate`
 - Aceitar, no mínimo:
-  - **CSV** no padrão exportado pelo app/site Nubank.
-  - **OFX** quando disponível.
+  - **CSV** no padrão exportado pelo app/site Nubank (**conta** e **fatura cartão** — `NubankCsvParser` / `NubankCreditCardCsvParser`).
+  - **OFX** de **conta corrente** quando disponível (`OfxParser` → `$ofx->bankAccounts`).
+- **Dívida (§5.3):** OFX de fatura de cartão (`CREDITCARDMSGSRSV1`) fora deste ciclo — sem fixture/regras de fatura; produto cartão = CSV. Ver backlog em `docs/PLAN_EXPANSAO.md`.
 - Fluxo:
   1. Validar autenticação e arquivo (tipo, tamanho, extensão).
   2. Armazenar o arquivo original em storage privado.
-  3. Detectar formato e selecionar parser (`NubankCsvParser` / `OfxParser`).
+  3. Detectar formato e selecionar parser (`NubankCsvParser` / `NubankCreditCardCsvParser` / `OfxParser`; override `source` / `statement_kind`).
   4. Normalizar campos: data, descrição, valor, tipo (crédito/débito), identificador externo se houver.
   5. Persistir `StatementImport` (metadados da importação) + `Transaction` (linhas).
   6. Retornar resumo: total importado, ignorados/duplicados, erros de linha.
@@ -373,7 +424,7 @@ Teste de contrato: `tests/Feature/HttpErrorContractTest.php`.
 | Entidade            | Campos principais                                                                                                                                                                                    |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `users`             | id, name, email, password (apenas admin)                                                                                                                                                             |
-| `statement_imports` | id, user_id, filename, format (`csv`|`ofx`), source (`nubank`), status, rows_total, rows_imported, rows_skipped, checksum, created_at                                                                |
+| `statement_imports` | id, user_id, filename, format (`csv`\|`ofx`\|`csv_credit_card`), source (`nubank`\|`nubank_credit`\|`other`), status, rows_total, rows_imported, rows_skipped, checksum, created_at |
 | `transactions`      | id, statement_import_id, external_id?, occurred_on, description, amount (`DECIMAL(14,2)` **absoluto ≥ 0**), type (`credit`|`debit`), category_id?, raw_payload (json), unique_hash (SHA-256, UNIQUE) |
 | `categories`        | id, name, slug, type (opcional no MVP — seed básico)                                                                                                                                                 |
 
@@ -415,7 +466,7 @@ Teste de contrato: `tests/Feature/HttpErrorContractTest.php`.
 
 **Critérios de aceite**
 
-- [x] APIs de leitura coerentes: `GET /api/transactions` (filtros + paginação) e `GET /api/analytics/dashboard` (cards/series/by_category) — Etapa C.
+- [x] APIs de leitura coerentes: `GET /api/transactions` (filtros + paginação) e `GET /api/analytics/dashboard` (cards/series/by_category/`goals`) — Etapa C + §7.2.
 - [x] Filtros atualizam cards, lista e gráficos na UI de forma coerente (Etapa D).
 - [x] Performance aceitável no backend com volume típico (agregações SQL + índices Etapa B).
 - [x] Layout responsivo (desktop prioritário; mobile utilizável) — Etapa D.
@@ -458,7 +509,8 @@ Checklist técnico do MVP. Marque itens conforme forem concluídos.
 - [x] Rate limiting em `login` e `statements/upload`.
 - [x] Service `StatementUploadService` (orquestração).
 - [x] `NubankCsvParser` com testes unitários (fixtures reais anonimizadas).
-- [x] `OfxParser` (ou adapter de lib) com testes.
+- [x] `NubankCreditCardCsvParser` + sniff `DetectedFormat` (PLAN_EXPANSAO §5.1).
+- [x] `OfxParser` (ou adapter de lib) com testes — **banking only**; OFX cartão = dívida §5.3 / backlog.
 - [x] Persistência atômica (import + transactions em transação DB).
 - [x] Endpoint `POST` upload + resposta de resumo.
 - [x] Endpoints de leitura: listagem filtrada, agregados do dashboard.

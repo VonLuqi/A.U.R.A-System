@@ -47,6 +47,34 @@ final class DateNormalizer
         return self::formatValidated((int) $m[1], (int) $m[2], (int) $m[3], $raw);
     }
 
+    /**
+     * ISO date yyyy-mm-dd → Y-m-d.
+     */
+    public static function fromIso(string $raw): string
+    {
+        $raw = trim(str_replace("\xC2\xA0", ' ', $raw));
+
+        if (! preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $raw, $m)) {
+            throw new InvalidArgumentException("Invalid ISO date [{$raw}].");
+        }
+
+        return self::formatValidated((int) $m[1], (int) $m[2], (int) $m[3], $raw);
+    }
+
+    /**
+     * Accept Brazilian dd/mm/yyyy or ISO yyyy-mm-dd.
+     */
+    public static function fromAny(string $raw): string
+    {
+        $raw = trim(str_replace("\xC2\xA0", ' ', $raw));
+
+        if (str_contains($raw, '/')) {
+            return self::fromBrazilian($raw);
+        }
+
+        return self::fromIso($raw);
+    }
+
     private static function formatValidated(int $year, int $month, int $day, string $original): string
     {
         if (! checkdate($month, $day, $year)) {

@@ -26,8 +26,12 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectGuestsTo(fn () => '/');
 
         // §1.8: guest = idempotent login for API (200 + user), not redirect/409.
+        // §2.1: active / role / quota middlewares for multi-user expansion.
         $middleware->alias([
             'guest' => \App\Http\Middleware\RedirectIfAuthenticated::class,
+            'active' => \App\Http\Middleware\EnsureUserIsActive::class,
+            'role' => \App\Http\Middleware\EnsureRole::class,
+            'quota' => \App\Http\Middleware\EnforceUsageQuota::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
@@ -42,6 +46,18 @@ return Application::configure(basePath: dirname(__DIR__))
                 return response()->json([
                     'message' => 'Unauthenticated.',
                 ], 401);
+            }
+        });
+
+        $exceptions->renderable(function (\App\Exceptions\UsageLimitExceededException $e, Request $request) {
+            if ($request->is('api/*') || $request->expectsJson()) {
+                return response()->json([
+                    'message' => $e->getMessage(),
+                    'error_code' => 'usage_limit_exceeded',
+                    'metric' => $e->metric,
+                    'limit' => $e->limit,
+                    'used' => $e->used,
+                ], 429);
             }
         });
 
@@ -100,6 +116,7 @@ return Application::configure(basePath: dirname(__DIR__))
             if ($e instanceof AuthenticationException
                 || $e instanceof InvalidStatementException
                 || $e instanceof UnsupportedStatementFormatException
+                || $e instanceof \App\Exceptions\UsageLimitExceededException
                 || $e instanceof QueryException
                 || $e instanceof ValidationException
                 || $e instanceof HttpExceptionInterface

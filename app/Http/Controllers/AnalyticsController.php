@@ -27,10 +27,13 @@ class AnalyticsController extends Controller
                     'category_id' => $filters['category_id'],
                     'q' => $filters['q'],
                     'group_by' => $filters['group_by'],
+                    'preset' => $filters['preset'],
                 ],
                 'cards' => $payload['cards'],
                 'series' => $payload['series'],
                 'by_category' => $payload['by_category'],
+                'by_alias' => $payload['by_alias'],
+                'goals' => $payload['goals'],
             ],
         ]);
     }

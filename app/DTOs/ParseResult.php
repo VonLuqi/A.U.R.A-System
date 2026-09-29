@@ -2,6 +2,7 @@
 
 namespace App\DTOs;
 
+use App\Enums\StatementFormat;
 use InvalidArgumentException;
 
 /**
@@ -25,8 +26,10 @@ final readonly class ParseResult
         public string $format,
         public string $source,
     ) {
-        if (! in_array($this->format, ['csv', 'ofx'], true)) {
-            throw new InvalidArgumentException("format must be csv|ofx, got [{$this->format}].");
+        if (! in_array($this->format, StatementFormat::values(), true)) {
+            throw new InvalidArgumentException(
+                'format must be '.implode('|', StatementFormat::values()).", got [{$this->format}]."
+            );
         }
 
         if ($this->source === '') {

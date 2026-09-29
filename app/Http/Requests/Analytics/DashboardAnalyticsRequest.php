@@ -2,18 +2,22 @@
 
 namespace App\Http\Requests\Analytics;
 
-use Carbon\CarbonImmutable;
+use App\Http\Requests\Concerns\PreparesDateRangeQuery;
+use App\Rules\WithinRoleDateRangeLimit;
+use App\Support\DateRangeQuery;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 /**
- * Query params for GET /api/analytics/dashboard (Etapa C §5.5.1).
+ * Query params for GET /api/analytics/dashboard (Etapa C §5.5.1 / PLAN_EXPANSAO §6.1).
  *
  * from/to: required together, or both omitted → current month in APP_TIMEZONE.
+ * preset: current_month|last_30|last_90|custom (custom exige from/to).
+ * group_by: optional; when omitted → DateRangeQuery::resolveGroupBy (≤45 days → day).
  */
 class DashboardAnalyticsRequest extends FormRequest
 {
-    public const DEFAULT_GROUP_BY = 'month';
+    use PreparesDateRangeQuery;
 
     /** @var list<string> */
     public const GROUP_BY = ['day', 'month'];
@@ -24,13 +28,30 @@ class DashboardAnalyticsRequest extends FormRequest
     }
 
     /**
-     * @return array<string, list<string|\Illuminate\Validation\Rules\Exists|\Illuminate\Validation\Rules\In>>
+     * @return array<string, list<string|\Illuminate\Validation\Rules\Exists|\Illuminate\Validation\Rules\In|\App\Rules\WithinRoleDateRangeLimit>>
      */
     public function rules(): array
     {
+        $preset = DateRangeQuery::normalizePreset($this->input('preset'));
+        $customRequiresDates = $preset === DateRangeQuery::PRESET_CUSTOM;
+
         return [
-            'from' => ['nullable', 'required_with:to', 'date', 'date_format:Y-m-d', 'before_or_equal:to'],
-            'to' => ['nullable', 'required_with:from', 'date', 'date_format:Y-m-d', 'after_or_equal:from'],
+            'preset' => ['nullable', 'string', Rule::in(DateRangeQuery::PRESETS)],
+            'from' => [
+                $customRequiresDates ? 'required' : 'nullable',
+                'required_with:to',
+                'date',
+                'date_format:Y-m-d',
+                'before_or_equal:to',
+            ],
+            'to' => [
+                $customRequiresDates ? 'required' : 'nullable',
+                'required_with:from',
+                'date',
+                'date_format:Y-m-d',
+                'after_or_equal:from',
+                new WithinRoleDateRangeLimit($this->user()),
+            ],
             'type' => ['nullable', 'string', Rule::in(['credit', 'debit'])],
             'category_id' => ['nullable', 'integer', 'exists:categories,id'],
             'q' => ['nullable', 'string', 'max:120'],
@@ -44,6 +65,8 @@ class DashboardAnalyticsRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'from.required' => 'preset=custom exige from e to.',
+            'to.required' => 'preset=custom exige from e to.',
             'from.required_with' => 'Informe from e to juntos, ou omita ambos para o mês corrente.',
             'to.required_with' => 'Informe from e to juntos, ou omita ambos para o mês corrente.',
             'from.before_or_equal' => 'A data inicial deve ser anterior ou igual à data final.',
@@ -51,38 +74,16 @@ class DashboardAnalyticsRequest extends FormRequest
             'type.in' => 'O tipo deve ser credit ou debit.',
             'category_id.exists' => 'Categoria inválida.',
             'group_by.in' => 'group_by inválido. Use day ou month.',
+            'preset.in' => 'preset inválido. Use current_month, last_30, last_90 ou custom.',
+            'to' => 'O intervalo de datas excede o limite do seu perfil.',
         ];
     }
 
     protected function prepareForValidation(): void
     {
-        $nullable = ['from', 'to', 'type', 'category_id', 'q', 'group_by'];
-        $normalized = [];
-
-        foreach ($nullable as $key) {
-            if ($this->exists($key) && $this->input($key) === '') {
-                $normalized[$key] = null;
-            }
-        }
-
-        if ($normalized !== []) {
-            $this->merge($normalized);
-        }
-
-        $from = $this->input('from');
-        $to = $this->input('to');
-
-        if (($from === null || $from === '') && ($to === null || $to === '')) {
-            [$defaultFrom, $defaultTo] = self::currentMonthBounds();
-            $this->merge([
-                'from' => $defaultFrom,
-                'to' => $defaultTo,
-            ]);
-        }
-
-        if (! $this->filled('group_by')) {
-            $this->merge(['group_by' => self::DEFAULT_GROUP_BY]);
-        }
+        $this->normalizeEmptyDateRangeInputs(['type', 'category_id', 'q', 'group_by']);
+        $this->applyDateRangePresetOrDefault();
+        $this->applyResolvedGroupBy();
     }
 
     /**
@@ -90,14 +91,7 @@ class DashboardAnalyticsRequest extends FormRequest
      */
     public static function currentMonthBounds(?\DateTimeInterface $at = null): array
     {
-        $now = CarbonImmutable::instance(
-            $at ?? CarbonImmutable::now(config('app.timezone'))
-        )->timezone(config('app.timezone'));
-
-        return [
-            $now->startOfMonth()->format('Y-m-d'),
-            $now->endOfMonth()->format('Y-m-d'),
-        ];
+        return DateRangeQuery::currentMonthBounds($at);
     }
 
     public function fromDate(): string
@@ -135,7 +129,16 @@ class DashboardAnalyticsRequest extends FormRequest
     {
         $value = $this->validated('group_by');
 
-        return is_string($value) && $value !== '' ? $value : self::DEFAULT_GROUP_BY;
+        if (is_string($value) && in_array($value, self::GROUP_BY, true)) {
+            return $value;
+        }
+
+        return DateRangeQuery::resolveGroupBy($this->fromDate(), $this->toDate());
+    }
+
+    public function preset(): ?string
+    {
+        return DateRangeQuery::normalizePreset($this->validated('preset') ?? $this->input('preset'));
     }
 
     /**
@@ -147,7 +150,8 @@ class DashboardAnalyticsRequest extends FormRequest
      *     type: ?string,
      *     category_id: ?int,
      *     q: ?string,
-     *     group_by: string
+     *     group_by: string,
+     *     preset: ?string
      * }
      */
     public function filters(): array
@@ -159,6 +163,7 @@ class DashboardAnalyticsRequest extends FormRequest
             'category_id' => $this->categoryId(),
             'q' => $this->search(),
             'group_by' => $this->groupBy(),
+            'preset' => $this->preset(),
         ];
     }
 }

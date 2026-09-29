@@ -6,6 +6,7 @@ use App\Models\Category;
 use App\Models\StatementImport;
 use App\Models\Transaction;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -19,6 +20,9 @@ class TransactionsAnalyticsAcceptanceTest extends TestCase
 
     public function test_filters_from_to_type_and_q_change_meta_total(): void
     {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-09-15 12:00:00', 'America/Sao_Paulo'));
+        config(['app.timezone' => 'America/Sao_Paulo']);
+
         $user = User::factory()->create();
         $import = StatementImport::factory()->for($user)->create();
         $food = Category::factory()->create(['name' => 'Alimentação']);
@@ -52,26 +56,37 @@ class TransactionsAnalyticsAcceptanceTest extends TestCase
             'amount' => '25.00',
         ]);
 
-        $this->actingAs($user)
-            ->getJson('/api/transactions')
-            ->assertOk()
-            ->assertJsonPath('meta.total', 4);
+        try {
+            // Default (no from/to) → current month (compat §6.1); August row excluded.
+            $this->actingAs($user)
+                ->getJson('/api/transactions')
+                ->assertOk()
+                ->assertJsonPath('meta.total', 3);
 
-        $this->actingAs($user)
-            ->getJson('/api/transactions?from=2026-09-01&to=2026-09-30')
-            ->assertOk()
-            ->assertJsonPath('meta.total', 3);
+            // Wide custom range includes all 4 rows.
+            $this->actingAs($user)
+                ->getJson('/api/transactions?from=2026-08-01&to=2026-09-30&preset=custom')
+                ->assertOk()
+                ->assertJsonPath('meta.total', 4);
 
-        $this->actingAs($user)
-            ->getJson('/api/transactions?from=2026-09-01&to=2026-09-30&type=debit')
-            ->assertOk()
-            ->assertJsonPath('meta.total', 2);
+            $this->actingAs($user)
+                ->getJson('/api/transactions?from=2026-09-01&to=2026-09-30')
+                ->assertOk()
+                ->assertJsonPath('meta.total', 3);
 
-        $this->actingAs($user)
-            ->getJson('/api/transactions?from=2026-09-01&to=2026-09-30&type=debit&q=Supermercado')
-            ->assertOk()
-            ->assertJsonPath('meta.total', 1)
-            ->assertJsonPath('data.0.description', 'Supermercado Extra');
+            $this->actingAs($user)
+                ->getJson('/api/transactions?from=2026-09-01&to=2026-09-30&type=debit')
+                ->assertOk()
+                ->assertJsonPath('meta.total', 2);
+
+            $this->actingAs($user)
+                ->getJson('/api/transactions?from=2026-09-01&to=2026-09-30&type=debit&q=Supermercado')
+                ->assertOk()
+                ->assertJsonPath('meta.total', 1)
+                ->assertJsonPath('data.0.description', 'Supermercado Extra');
+        } finally {
+            CarbonImmutable::setTestNow();
+        }
     }
 
     public function test_dashboard_cards_match_manual_sql_sums(): void

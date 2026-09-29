@@ -48,6 +48,17 @@ class LoginRequest extends FormRequest
             ], 401));
         }
 
+        /** @var \App\Models\User|null $user */
+        $user = Auth::guard('web')->user();
+        if ($user !== null && ! $user->is_active) {
+            Auth::guard('web')->logout();
+            RateLimiter::hit($this->throttleKey());
+
+            throw new HttpResponseException(response()->json([
+                'message' => 'Conta desativada.',
+            ], 403));
+        }
+
         RateLimiter::clear($this->throttleKey());
     }
 

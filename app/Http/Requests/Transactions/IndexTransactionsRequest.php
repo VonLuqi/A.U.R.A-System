@@ -2,14 +2,22 @@
 
 namespace App\Http\Requests\Transactions;
 
+use App\Http\Requests\Concerns\PreparesDateRangeQuery;
+use App\Rules\WithinRoleDateRangeLimit;
+use App\Support\DateRangeQuery;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 /**
- * Query params for GET /api/transactions (Etapa C §5.4.1).
+ * Query params for GET /api/transactions (Etapa C §5.4.1 / PLAN_EXPANSAO §6.1).
+ *
+ * from/to: required together, or both omitted → current month (compat with analytics).
+ * preset: current_month|last_30|last_90|custom (custom exige from/to).
  */
 class IndexTransactionsRequest extends FormRequest
 {
+    use PreparesDateRangeQuery;
+
     public const DEFAULT_PER_PAGE = 20;
 
     public const DEFAULT_SORT = 'occurred_on';
@@ -25,13 +33,30 @@ class IndexTransactionsRequest extends FormRequest
     }
 
     /**
-     * @return array<string, list<string|\Illuminate\Validation\Rules\Exists|\Illuminate\Validation\Rules\In>>
+     * @return array<string, list<string|\Illuminate\Validation\Rules\Exists|\Illuminate\Validation\Rules\In|\App\Rules\WithinRoleDateRangeLimit>>
      */
     public function rules(): array
     {
+        $preset = DateRangeQuery::normalizePreset($this->input('preset'));
+        $customRequiresDates = $preset === DateRangeQuery::PRESET_CUSTOM;
+
         return [
-            'from' => ['nullable', 'date', 'date_format:Y-m-d', 'before_or_equal:to'],
-            'to' => ['nullable', 'date', 'date_format:Y-m-d', 'after_or_equal:from'],
+            'preset' => ['nullable', 'string', Rule::in(DateRangeQuery::PRESETS)],
+            'from' => [
+                $customRequiresDates ? 'required' : 'nullable',
+                'required_with:to',
+                'date',
+                'date_format:Y-m-d',
+                'before_or_equal:to',
+            ],
+            'to' => [
+                $customRequiresDates ? 'required' : 'nullable',
+                'required_with:from',
+                'date',
+                'date_format:Y-m-d',
+                'after_or_equal:from',
+                new WithinRoleDateRangeLimit($this->user()),
+            ],
             'type' => ['nullable', 'string', Rule::in(['credit', 'debit'])],
             'category_id' => ['nullable', 'integer', 'exists:categories,id'],
             'q' => ['nullable', 'string', 'max:120'],
@@ -49,6 +74,8 @@ class IndexTransactionsRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'from.required' => 'preset=custom exige from e to.',
+            'to.required' => 'preset=custom exige from e to.',
             'from.before_or_equal' => 'A data inicial deve ser anterior ou igual à data final.',
             'to.after_or_equal' => 'A data final deve ser posterior ou igual à data inicial.',
             'type.in' => 'O tipo deve ser credit ou debit.',
@@ -57,38 +84,29 @@ class IndexTransactionsRequest extends FormRequest
             'per_page.max' => 'O máximo de itens por página é 100.',
             'sort.in' => 'Ordenação inválida. Use occurred_on, amount ou created_at.',
             'direction.in' => 'Direção inválida. Use asc ou desc.',
+            'from.required_with' => 'Informe from e to juntos, ou omita ambos para o mês corrente.',
+            'to.required_with' => 'Informe from e to juntos, ou omita ambos para o mês corrente.',
+            'preset.in' => 'preset inválido. Use current_month, last_30, last_90 ou custom.',
+            'to' => 'O intervalo de datas excede o limite do seu perfil.',
         ];
     }
 
     protected function prepareForValidation(): void
     {
-        // Allow empty query strings to become null so nullable rules pass cleanly.
-        $nullable = ['from', 'to', 'type', 'category_id', 'q', 'statement_import_id', 'page', 'per_page', 'sort', 'direction'];
-
-        $normalized = [];
-        foreach ($nullable as $key) {
-            if ($this->exists($key) && $this->input($key) === '') {
-                $normalized[$key] = null;
-            }
-        }
-
-        if ($normalized !== []) {
-            $this->merge($normalized);
-        }
+        $this->normalizeEmptyDateRangeInputs([
+            'type', 'category_id', 'q', 'statement_import_id', 'page', 'per_page', 'sort', 'direction',
+        ]);
+        $this->applyDateRangePresetOrDefault();
     }
 
-    public function fromDate(): ?string
+    public function fromDate(): string
     {
-        $value = $this->validated('from');
-
-        return is_string($value) && $value !== '' ? $value : null;
+        return (string) $this->validated('from');
     }
 
-    public function toDate(): ?string
+    public function toDate(): string
     {
-        $value = $this->validated('to');
-
-        return is_string($value) && $value !== '' ? $value : null;
+        return (string) $this->validated('to');
     }
 
     public function type(): ?string
@@ -140,19 +158,25 @@ class IndexTransactionsRequest extends FormRequest
         return is_string($value) && $value !== '' ? $value : self::DEFAULT_DIRECTION;
     }
 
+    public function preset(): ?string
+    {
+        return DateRangeQuery::normalizePreset($this->validated('preset') ?? $this->input('preset'));
+    }
+
     /**
      * Normalized filters for TransactionQueryService (§5.4.2).
      *
      * @return array{
-     *     from: ?string,
-     *     to: ?string,
+     *     from: string,
+     *     to: string,
      *     type: ?string,
      *     category_id: ?int,
      *     q: ?string,
      *     statement_import_id: ?int,
      *     per_page: int,
      *     sort: string,
-     *     direction: string
+     *     direction: string,
+     *     preset: ?string
      * }
      */
     public function filters(): array
@@ -167,6 +191,7 @@ class IndexTransactionsRequest extends FormRequest
             'per_page' => $this->perPage(),
             'sort' => $this->sort(),
             'direction' => $this->direction(),
+            'preset' => $this->preset(),
         ];
     }
 }

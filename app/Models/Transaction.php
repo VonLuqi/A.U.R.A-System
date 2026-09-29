@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\TransactionSourceKind;
 use App\Support\TransactionHasher;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -18,7 +19,9 @@ class Transaction extends Model
      * @var list<string>
      */
     protected $fillable = [
+        'user_id',
         'statement_import_id',
+        'source_kind',
         'category_id',
         'external_id',
         'occurred_on',
@@ -38,7 +41,16 @@ class Transaction extends Model
             'occurred_on' => 'date',
             'amount' => 'decimal:2',
             'raw_payload' => 'array',
+            'source_kind' => TransactionSourceKind::class,
         ];
+    }
+
+    /**
+     * @return BelongsTo<User, $this>
+     */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 
     /**
@@ -55,6 +67,17 @@ class Transaction extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(Category::class);
+    }
+
+    /**
+     * @param  Builder<Transaction>  $query
+     * @return Builder<Transaction>
+     */
+    public function scopeForUser(Builder $query, int|User $user): Builder
+    {
+        $userId = $user instanceof User ? (int) $user->id : $user;
+
+        return $query->where('transactions.user_id', $userId);
     }
 
     /**

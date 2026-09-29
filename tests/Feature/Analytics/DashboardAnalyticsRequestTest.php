@@ -10,7 +10,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * §5.5.1 — DashboardAnalyticsRequest query validation + current-month defaults.
+ * §5.5.1 / PLAN_EXPANSAO §6.1 — DashboardAnalyticsRequest + presets + resolveGroupBy.
  */
 class DashboardAnalyticsRequestTest extends TestCase
 {
@@ -21,7 +21,7 @@ class DashboardAnalyticsRequestTest extends TestCase
         $this->getJson('/api/analytics/dashboard')->assertUnauthorized();
     }
 
-    public function test_defaults_to_current_month_and_group_by_month(): void
+    public function test_defaults_to_current_month_and_resolves_group_by_day(): void
     {
         CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-09-15 12:00:00', 'America/Sao_Paulo'));
         config(['app.timezone' => 'America/Sao_Paulo']);
@@ -29,12 +29,14 @@ class DashboardAnalyticsRequestTest extends TestCase
         $user = User::factory()->create();
 
         try {
+            // September = 30 days ≤ 45 → group_by=day (no more hardcoded month).
             $this->actingAs($user)
                 ->getJson('/api/analytics/dashboard')
                 ->assertOk()
                 ->assertJsonPath('data.filters.from', '2026-09-01')
                 ->assertJsonPath('data.filters.to', '2026-09-30')
-                ->assertJsonPath('data.filters.group_by', 'month')
+                ->assertJsonPath('data.filters.group_by', 'day')
+                ->assertJsonPath('data.filters.preset', null)
                 ->assertJsonPath('data.filters.type', null);
         } finally {
             CarbonImmutable::setTestNow();
@@ -54,6 +56,7 @@ class DashboardAnalyticsRequestTest extends TestCase
                 'category_id' => $category->id,
                 'q' => 'ifood',
                 'group_by' => 'day',
+                'preset' => 'custom',
             ]))
             ->assertOk()
             ->assertJsonPath('data.filters.from', '2026-08-01')
@@ -61,7 +64,48 @@ class DashboardAnalyticsRequestTest extends TestCase
             ->assertJsonPath('data.filters.type', 'debit')
             ->assertJsonPath('data.filters.category_id', $category->id)
             ->assertJsonPath('data.filters.q', 'ifood')
-            ->assertJsonPath('data.filters.group_by', 'day');
+            ->assertJsonPath('data.filters.group_by', 'day')
+            ->assertJsonPath('data.filters.preset', 'custom');
+    }
+
+    public function test_preset_last_30_computes_bounds_and_group_by_day(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-09-15 12:00:00', 'America/Sao_Paulo'));
+        config(['app.timezone' => 'America/Sao_Paulo']);
+
+        $user = User::factory()->create();
+
+        try {
+            $this->actingAs($user)
+                ->getJson('/api/analytics/dashboard?preset=last_30')
+                ->assertOk()
+                ->assertJsonPath('data.filters.from', '2026-08-17')
+                ->assertJsonPath('data.filters.to', '2026-09-15')
+                ->assertJsonPath('data.filters.preset', 'last_30')
+                ->assertJsonPath('data.filters.group_by', 'day');
+        } finally {
+            CarbonImmutable::setTestNow();
+        }
+    }
+
+    public function test_preset_custom_without_dates_returns_422(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->getJson('/api/analytics/dashboard?preset=custom')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['from', 'to']);
+    }
+
+    public function test_wide_range_without_group_by_resolves_to_month(): void
+    {
+        $user = User::factory()->admin()->create();
+
+        $this->actingAs($user)
+            ->getJson('/api/analytics/dashboard?from=2026-01-01&to=2026-06-30')
+            ->assertOk()
+            ->assertJsonPath('data.filters.group_by', 'month');
     }
 
     public function test_rejects_partial_date_range_and_invalid_group_by(): void
@@ -82,6 +126,16 @@ class DashboardAnalyticsRequestTest extends TestCase
             ->getJson('/api/analytics/dashboard?from=2026-09-30&to=2026-09-01&type=transfer')
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['from', 'to', 'type']);
+    }
+
+    public function test_rejects_invalid_preset(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->getJson('/api/analytics/dashboard?preset=ytd')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['preset']);
     }
 
     public function test_current_month_bounds_helper_uses_app_timezone(): void

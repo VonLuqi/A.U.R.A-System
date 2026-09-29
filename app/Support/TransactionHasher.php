@@ -2,17 +2,19 @@
 
 namespace App\Support;
 
+/**
+ * Canonical unique hash for cross-import idempotency (SHA-256 hex, 64 chars).
+ *
+ * Format: occurred_on|amount|type|description_normalized|external_id|source
+ *
+ * Does NOT include `user_id` or `statement_import_id` in the payload. Multi-tenant
+ * isolation is enforced by the DB unique index `(user_id, unique_hash)`.
+ *
+ * Import policy: on `(user_id, unique_hash)` conflict, SKIP the row and
+ * increment statement_imports.rows_skipped — never silently upsert/update.
+ */
 final class TransactionHasher
 {
-    /**
-     * Canonical unique hash for cross-import idempotency (SHA-256 hex, 64 chars).
-     *
-     * Format: occurred_on|amount|type|description_normalized|external_id|source
-     * Does NOT include statement_import_id.
-     *
-     * Import policy (Etapa C / MVP): on unique_hash conflict, SKIP the row and
-     * increment statement_imports.rows_skipped — never silently upsert/update.
-     */
     public static function make(
         string $occurredOn,
         string|float|int $amount,

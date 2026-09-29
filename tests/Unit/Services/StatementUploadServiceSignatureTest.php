@@ -5,27 +5,37 @@ namespace Tests\Unit\Services;
 use App\DTOs\UploadSummary;
 use App\Models\User;
 use App\Parsers\StatementParserResolver;
+use App\Services\AliasResolutionService;
 use App\Services\StatementUploadService;
+use App\Services\UsageLimitService;
 use Illuminate\Http\UploadedFile;
 use ReflectionClass;
 use ReflectionNamedType;
 use Tests\TestCase;
 
 /**
- * §4.2 — contrato de assinatura do StatementUploadService.
+ * Contrato de assinatura do StatementUploadService (Etapa C §4.2 / expansão §4.1).
  */
 class StatementUploadServiceSignatureTest extends TestCase
 {
-    public function test_constructor_injects_statement_parser_resolver(): void
+    public function test_constructor_injects_parser_usage_and_aliases(): void
     {
         $ctor = (new ReflectionClass(StatementUploadService::class))->getConstructor();
         $this->assertNotNull($ctor);
-        $this->assertSame(1, $ctor->getNumberOfParameters());
+        $this->assertSame(3, $ctor->getNumberOfParameters());
 
-        $param = $ctor->getParameters()[0];
-        $type = $param->getType();
-        $this->assertInstanceOf(ReflectionNamedType::class, $type);
-        $this->assertSame(StatementParserResolver::class, $type->getName());
+        $types = [];
+        foreach ($ctor->getParameters() as $param) {
+            $type = $param->getType();
+            $this->assertInstanceOf(ReflectionNamedType::class, $type);
+            $types[] = $type->getName();
+        }
+
+        $this->assertSame([
+            StatementParserResolver::class,
+            UsageLimitService::class,
+            AliasResolutionService::class,
+        ], $types);
     }
 
     public function test_handle_signature_matches_plan_contract(): void
@@ -51,7 +61,7 @@ class StatementUploadServiceSignatureTest extends TestCase
         $this->assertSame(UploadSummary::class, $return->getName());
     }
 
-    public function test_container_resolves_service_with_resolver(): void
+    public function test_container_resolves_service_with_dependencies(): void
     {
         $service = $this->app->make(StatementUploadService::class);
 

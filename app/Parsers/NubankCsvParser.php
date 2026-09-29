@@ -23,7 +23,8 @@ final class NubankCsvParser implements StatementParserInterface
 
     public function supports(string $format, string $source): bool
     {
-        return $format === 'csv' && $source === 'nubank';
+        return $format === 'csv'
+            && in_array($source, ['nubank', 'other'], true);
     }
 
     public function parse(SplFileInfo|string $file): ParseResult

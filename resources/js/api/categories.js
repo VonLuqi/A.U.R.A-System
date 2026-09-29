@@ -48,6 +48,18 @@ export async function listCategories({ force = false, signal } = {}) {
     return categoriesPromise;
 }
 
+/**
+ * @param {{ name: string, type?: string, color?: string|null }} payload
+ * @returns {Promise<Category>}
+ */
+export async function createCategory(payload) {
+    const { data } = await api.post('/categories', payload);
+    const category = data.data;
+    clearCategoriesCache();
+
+    return category;
+}
+
 export function clearCategoriesCache() {
     categoriesCache = null;
     categoriesPromise = null;

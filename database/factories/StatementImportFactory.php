@@ -40,6 +40,15 @@ class StatementImportFactory extends Factory
         ];
     }
 
+    public function creditCard(): static
+    {
+        return $this->state(fn () => [
+            'format' => 'csv_credit_card',
+            'source' => 'nubank_credit',
+            'original_filename' => 'nubank-credit-'.fake()->dateTimeBetween('-6 months', 'now')->format('Y-m').'.csv',
+        ]);
+    }
+
     public function purged(): static
     {
         return $this->state(fn () => [

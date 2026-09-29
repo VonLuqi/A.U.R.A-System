@@ -1,16 +1,20 @@
 ﻿import CategorySelect from './CategorySelect';
-import PeriodPills from './PeriodPills';
+import DateRangePicker from './DateRangePicker';
 import SearchField from './SearchField';
 import TypePills from './TypePills';
 import { cx } from '../../lib/cx';
 
 /**
- * FilterBar — Etapa D §4.5.5 / §5.3.1 / §6.2.
+ * FilterBar — Etapa D §4.5.5 / §5.3.1 / §6.2 / PLAN_EXPANSAO §8.3.
  * Wrap responsivo; faixa de pills com scroll-X sutil no mobile.
  */
 export default function FilterBar({
     periodPreset,
+    from,
+    to,
+    maxDateRangeDays = null,
     onPeriodChange,
+    onCustomRange,
     type,
     onTypeChange,
     categoryId,
@@ -28,9 +32,13 @@ export default function FilterBar({
             aria-label="Filtros do dashboard"
         >
             <div className="aura-scroll-x flex flex-nowrap items-center gap-x-3 gap-y-2 pb-1">
-                <PeriodPills
-                    value={periodPreset}
-                    onChange={onPeriodChange}
+                <DateRangePicker
+                    preset={periodPreset}
+                    from={from}
+                    to={to}
+                    maxDays={maxDateRangeDays}
+                    onPresetChange={onPeriodChange}
+                    onCustomRange={onCustomRange}
                     className="shrink-0 flex-nowrap"
                 />
                 <TypePills

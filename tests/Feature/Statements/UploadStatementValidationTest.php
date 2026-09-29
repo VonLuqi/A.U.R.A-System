@@ -62,7 +62,83 @@ class UploadStatementValidationTest extends TestCase
             ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['source'])
-            ->assertJsonPath('errors.source.0', 'Fonte inválida. No MVP apenas nubank é aceita.');
+            ->assertJsonPath('errors.source.0', 'Fonte inválida. Use nubank, nubank_credit ou other.');
+    }
+
+    public function test_upload_accepts_nubank_credit_and_other_sources(): void
+    {
+        $user = User::factory()->create();
+        $file = new UploadedFile(
+            base_path('tests/Fixtures/statements/nubank/sample_account.csv'),
+            'nubank.csv',
+            'text/plain',
+            null,
+            true,
+        );
+
+        // `other` uses the checking-account CSV parser (same headers).
+        $this->actingAs($user)
+            ->postJson('/api/statements/upload', [
+                'file' => $file,
+                'source' => 'other',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.source', 'other')
+            ->assertJsonPath('data.format', 'csv');
+
+        // `nubank_credit` + credit-card fixture → csv_credit_card parser (§5.1).
+        $this->actingAs($user)
+            ->postJson('/api/statements/upload', [
+                'file' => new UploadedFile(
+                    base_path('tests/Fixtures/statements/nubank_credit_card_sample.csv'),
+                    'nubank-credit.csv',
+                    'text/plain',
+                    null,
+                    true,
+                ),
+                'source' => 'nubank_credit',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.source', 'nubank_credit')
+            ->assertJsonPath('data.format', 'csv_credit_card')
+            ->assertJsonPath('data.rows_imported', 7);
+    }
+
+    public function test_upload_statement_kind_credit_card_override(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->postJson('/api/statements/upload', [
+                'file' => new UploadedFile(
+                    base_path('tests/Fixtures/statements/nubank_credit_card_sample.csv'),
+                    'fatura.csv',
+                    'text/plain',
+                    null,
+                    true,
+                ),
+                'statement_kind' => 'credit_card',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.format', 'csv_credit_card')
+            ->assertJsonPath('data.source', 'nubank_credit');
+    }
+
+    public function test_upload_rejects_invalid_statement_kind(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->postJson('/api/statements/upload', [
+                'file' => UploadedFile::fake()->create('nubank.csv', 10, 'text/csv'),
+                'statement_kind' => 'savings',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['statement_kind'])
+            ->assertJsonPath(
+                'errors.statement_kind.0',
+                'Tipo de extrato inválido. Use checking ou credit_card.'
+            );
     }
 
     public function test_upload_accepts_csv_ofx_and_qfx_extensions(): void

@@ -2,9 +2,11 @@
 
 namespace Database\Factories;
 
+use App\Enums\TransactionSourceKind;
 use App\Models\Category;
 use App\Models\StatementImport;
 use App\Models\Transaction;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -34,6 +36,30 @@ class TransactionFactory extends Factory
     ];
 
     /**
+     * @return static
+     */
+    public function configure(): static
+    {
+        return $this->afterMaking(function (Transaction $transaction): void {
+            if ($transaction->user_id !== null) {
+                return;
+            }
+
+            if ($transaction->statement_import_id !== null) {
+                $transaction->user_id = StatementImport::query()
+                    ->whereKey($transaction->statement_import_id)
+                    ->value('user_id');
+
+                return;
+            }
+
+            if ($transaction->relationLoaded('statementImport') && $transaction->statementImport !== null) {
+                $transaction->user_id = $transaction->statementImport->user_id;
+            }
+        });
+    }
+
+    /**
      * Define the model's default state.
      *
      * @return array<string, mixed>
@@ -60,6 +86,7 @@ class TransactionFactory extends Factory
 
         return [
             'statement_import_id' => StatementImport::factory(),
+            'source_kind' => TransactionSourceKind::Import,
             'category_id' => $categoryId,
             'external_id' => $externalId,
             'occurred_on' => $occurredOn,
@@ -79,5 +106,34 @@ class TransactionFactory extends Factory
                 'description' => $description,
             ],
         ];
+    }
+
+    public function manual(): static
+    {
+        return $this->state(function (array $attributes) {
+            $userId = $attributes['user_id'] ?? null;
+
+            return [
+                'user_id' => $userId ?? User::factory(),
+                'statement_import_id' => null,
+                'source_kind' => TransactionSourceKind::Manual,
+                'raw_payload' => [
+                    'origin' => 'manual',
+                    'seed' => true,
+                ],
+            ];
+        })->afterMaking(function (Transaction $transaction): void {
+            $userId = (int) ($transaction->user_id ?? 0);
+            $transaction->unique_hash = \App\Support\TransactionHasher::make(
+                $transaction->occurred_on instanceof \DateTimeInterface
+                    ? $transaction->occurred_on->format('Y-m-d')
+                    : (string) $transaction->occurred_on,
+                $transaction->amount,
+                (string) $transaction->type,
+                (string) $transaction->description,
+                null,
+                'manual:'.$userId,
+            );
+        });
     }
 }

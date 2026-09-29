@@ -4,12 +4,14 @@ namespace Tests\Feature\Transactions;
 
 use App\Models\Category;
 use App\Models\StatementImport;
+use App\Models\Transaction;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * §5.4.1 — IndexTransactionsRequest query validation + defaults.
+ * §5.4.1 / PLAN_EXPANSAO §6.1 — IndexTransactionsRequest query validation + date defaults.
  */
 class IndexTransactionsRequestTest extends TestCase
 {
@@ -20,16 +22,67 @@ class IndexTransactionsRequestTest extends TestCase
         $this->getJson('/api/transactions')->assertUnauthorized();
     }
 
-    public function test_accepts_empty_query_with_defaults_in_filters_payload(): void
+    public function test_defaults_to_current_month_when_dates_omitted(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-09-15 12:00:00', 'America/Sao_Paulo'));
+        config(['app.timezone' => 'America/Sao_Paulo']);
+
+        $user = User::factory()->create();
+        $import = StatementImport::factory()->for($user)->create();
+
+        Transaction::factory()->for($import, 'statementImport')->create([
+            'user_id' => $user->id,
+            'occurred_on' => '2026-09-10',
+            'description' => 'In month',
+        ]);
+        Transaction::factory()->for($import, 'statementImport')->create([
+            'user_id' => $user->id,
+            'occurred_on' => '2026-08-10',
+            'description' => 'Outside month',
+        ]);
+
+        try {
+            $this->actingAs($user)
+                ->getJson('/api/transactions')
+                ->assertOk()
+                ->assertJsonPath('meta.per_page', 20)
+                ->assertJsonPath('meta.total', 1)
+                ->assertJsonPath('data.0.description', 'In month');
+        } finally {
+            CarbonImmutable::setTestNow();
+        }
+    }
+
+    public function test_preset_current_month_filters_rows(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-09-15 12:00:00', 'America/Sao_Paulo'));
+        config(['app.timezone' => 'America/Sao_Paulo']);
+
+        $user = User::factory()->create();
+        $import = StatementImport::factory()->for($user)->create();
+        Transaction::factory()->for($import, 'statementImport')->create([
+            'user_id' => $user->id,
+            'occurred_on' => '2026-09-01',
+        ]);
+
+        try {
+            $this->actingAs($user)
+                ->getJson('/api/transactions?preset=current_month')
+                ->assertOk()
+                ->assertJsonPath('meta.total', 1);
+        } finally {
+            CarbonImmutable::setTestNow();
+        }
+    }
+
+    public function test_preset_custom_requires_from_and_to(): void
     {
         $user = User::factory()->create();
 
         $this->actingAs($user)
-            ->getJson('/api/transactions')
-            ->assertOk()
-            ->assertJsonPath('meta.per_page', 20)
-            ->assertJsonPath('meta.current_page', 1)
-            ->assertJsonPath('data', []);
+            ->getJson('/api/transactions?preset=custom')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['from', 'to']);
     }
 
     public function test_accepts_valid_filter_combination(): void
@@ -50,6 +103,7 @@ class IndexTransactionsRequestTest extends TestCase
                 'sort' => 'amount',
                 'direction' => 'asc',
                 'page' => 2,
+                'preset' => 'custom',
             ]))
             ->assertOk()
             ->assertJsonPath('meta.per_page', 50)

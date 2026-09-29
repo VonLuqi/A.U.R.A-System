@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Http\Resources\AuthUserResource;
 use App\Models\User;
 use Closure;
 use Illuminate\Http\Request;
@@ -9,7 +10,7 @@ use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Guest middleware for Aura (Etapa C §1.8).
+ * Guest middleware for Aura (Etapa C §1.8 / PLAN_EXPANSAO §8.1).
  *
  * Decision: if already authenticated, POST /api/login returns 200 + current user
  * (idempotent) instead of redirect/409. SPA never needs a second login error.
@@ -33,11 +34,7 @@ class RedirectIfAuthenticated
                 $user = Auth::guard($guard)->user();
 
                 return response()->json([
-                    'user' => [
-                        'id' => $user->id,
-                        'name' => $user->name,
-                        'email' => $user->email,
-                    ],
+                    'user' => (new AuthUserResource($user))->resolve(),
                 ]);
             }
 

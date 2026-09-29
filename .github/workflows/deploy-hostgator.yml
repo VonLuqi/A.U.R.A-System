@@ -124,6 +124,9 @@ jobs:
           [ -x /opt/cpanel/ea-php82/root/usr/bin/php ] && PHP_BIN=/opt/cpanel/ea-php82/root/usr/bin/php
           $PHP_BIN artisan --version
           $PHP_BIN artisan migrate --force
+          # Expansão F/G (§9.3): backfill idempotente + cotas (nunca DatabaseSeeder completo)
+          $PHP_BIN artisan aura:backfill-transaction-user-id || true
+          $PHP_BIN artisan db:seed --class=Database\\Seeders\\RoleLimitsSeeder --force
           $PHP_BIN artisan config:cache
           $PHP_BIN artisan route:cache || true
           $PHP_BIN artisan view:cache || true

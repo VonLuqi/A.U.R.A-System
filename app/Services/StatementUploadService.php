@@ -7,6 +7,7 @@ use App\DTOs\ParsedTransaction;
 use App\DTOs\UploadSummary;
 use App\Exceptions\InvalidStatementException;
 use App\Exceptions\UnsupportedStatementFormatException;
+use App\Enums\TransactionSourceKind;
 use App\Models\StatementImport;
 use App\Models\Transaction;
 use App\Models\User;
@@ -14,6 +15,7 @@ use App\Parsers\StatementParserResolver;
 use App\Support\StatementFormatDetector;
 use App\Support\StatementStorage;
 use App\Support\TransactionHasher;
+use App\Services\UsageLimitService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -41,13 +43,19 @@ final class StatementUploadService
 
     public function __construct(
         private readonly StatementParserResolver $parsers,
+        private readonly UsageLimitService $usageLimits,
+        private readonly AliasResolutionService $aliases,
     ) {}
 
-    public function handle(User $user, UploadedFile $file, string $source = 'nubank'): UploadSummary
-    {
-        $source = StatementFormatDetector::normalizeSource($source);
-        // §4.3.1 — detect format (extension / sniff) before store.
-        $format = StatementFormatDetector::detect($file);
+    public function handle(
+        User $user,
+        UploadedFile $file,
+        string $source = 'nubank',
+        ?string $statementKind = null,
+    ): UploadSummary {
+        $detected = StatementFormatDetector::detectForImport($file, $source, $statementKind);
+        $format = $detected['format'];
+        $source = $detected['source'];
 
         // §4.3.1 — persist on disk `statements` + SHA-256 checksum + sanitized basename.
         // Uses StatementStorage (putFileAs under the hood); no StatementImport if store fails.
@@ -75,6 +83,8 @@ final class StatementUploadService
 
             // Step 6–7: persist atomically + mark completed
             $summary = $this->persistParsed($import, $parseResult, $source);
+
+            $this->usageLimits->increment($user, UsageLimitService::METRIC_UPLOADS);
 
             Log::info('statements.upload.completed', [
                 'user_id' => (int) $import->user_id,
@@ -105,13 +115,17 @@ final class StatementUploadService
 
     private function persistParsed(StatementImport $import, ParseResult $parseResult, string $source): UploadSummary
     {
+        $user = User::query()->findOrFail((int) $import->user_id);
         $rowErrors = $parseResult->rowErrors;
-        $prepared = $this->prepareRows($import, $parseResult->transactions, $source);
+        $prepared = $this->prepareRows($import, $user, $parseResult->transactions, $source);
 
         $hashes = array_column($prepared['rows'], 'unique_hash');
         $existing = $hashes === []
             ? collect()
-            : Transaction::query()->whereIn('unique_hash', $hashes)->pluck('unique_hash');
+            : Transaction::query()
+                ->forUser((int) $import->user_id)
+                ->whereIn('unique_hash', $hashes)
+                ->pluck('unique_hash');
 
         $existingSet = array_fill_keys($existing->all(), true);
         $newRows = [];
@@ -156,19 +170,27 @@ final class StatementUploadService
      * @param  list<ParsedTransaction>  $transactions
      * @return array{rows: list<array<string, mixed>>, intra_batch_skips: int}
      */
-    private function prepareRows(StatementImport $import, array $transactions, string $source): array
-    {
+    private function prepareRows(
+        StatementImport $import,
+        User $user,
+        array $transactions,
+        string $source,
+    ): array {
         $now = now();
         $rows = [];
         $seen = [];
         $intraBatchSkips = 0;
 
         foreach ($transactions as $tx) {
+            $originalDescription = $tx->description;
+
+            // Hash uses the raw bank description so re-imports stay idempotent
+            // even after alias display_name rewrites the stored description.
             $hash = TransactionHasher::make(
                 $tx->occurredOn,
                 $tx->amount,
                 $tx->type,
-                $tx->description,
+                $originalDescription,
                 $tx->externalId,
                 $source,
             );
@@ -180,16 +202,28 @@ final class StatementUploadService
             }
             $seen[$hash] = true;
 
+            $match = $this->aliases->resolve($user, $originalDescription);
+            $description = $match?->displayName ?? $originalDescription;
+            $categoryId = $match?->categoryId;
+
+            $payload = $tx->rawPayload;
+            $payload['original_description'] = $originalDescription;
+            if ($match !== null) {
+                $payload['alias_id'] = $match->aliasId;
+            }
+
             $rows[] = [
+                'user_id' => (int) $import->user_id,
                 'statement_import_id' => $import->id,
-                'category_id' => null,
+                'source_kind' => TransactionSourceKind::Import->value,
+                'category_id' => $categoryId,
                 'external_id' => $tx->externalId,
                 'occurred_on' => $tx->occurredOn,
-                'description' => $tx->description,
+                'description' => $description,
                 'amount' => $tx->amount,
                 'type' => $tx->type,
                 'unique_hash' => $hash,
-                'raw_payload' => json_encode($tx->rawPayload, JSON_UNESCAPED_UNICODE),
+                'raw_payload' => json_encode($payload, JSON_UNESCAPED_UNICODE),
                 'created_at' => $now,
                 'updated_at' => $now,
             ];

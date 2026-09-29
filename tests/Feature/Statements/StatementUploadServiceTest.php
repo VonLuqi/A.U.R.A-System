@@ -186,7 +186,11 @@ class StatementUploadServiceTest extends TestCase
                 'Falha em D:\\Projetos\\ControleFinanceiroPessoal\\storage\\app\\private\\statements\\x.csv '.$longTail
             ));
 
-        $service = new StatementUploadService(new \App\Parsers\StatementParserResolver([$parser]));
+        $service = new StatementUploadService(
+            new \App\Parsers\StatementParserResolver([$parser]),
+            $this->app->make(\App\Services\UsageLimitService::class),
+            $this->app->make(\App\Services\AliasResolutionService::class),
+        );
 
         try {
             $service->handle($user, $file);

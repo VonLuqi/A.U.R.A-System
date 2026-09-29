@@ -1,0 +1,82 @@
+import { describe, expect, it } from 'vitest';
+import { cleanApiParams, toAnalyticsParams, toTransactionsParams } from './apiParams.js';
+import {
+    dateRangeLimitMessage,
+    daysBetween,
+    formatRangeLabel,
+    isWithinDateRangeLimit,
+    maxDateRangeDaysFor,
+    normalizePeriodPreset,
+    parseIsoDate,
+    resolveGroupBy,
+} from './dates.js';
+
+describe('dates §6.2', () => {
+    it('normalizes period presets', () => {
+        expect(normalizePeriodPreset('custom')).toBe('custom');
+        expect(normalizePeriodPreset('LAST_30')).toBe('last_30');
+        expect(normalizePeriodPreset('ytd')).toBeNull();
+        expect(normalizePeriodPreset('')).toBeNull();
+    });
+
+    it('resolveGroupBy uses inclusive 45-day threshold', () => {
+        expect(daysBetween('2026-09-01', '2026-09-30')).toBe(30);
+        expect(resolveGroupBy('2026-09-01', '2026-09-30')).toBe('day');
+        expect(resolveGroupBy('2026-08-01', '2026-09-14')).toBe('day');
+        expect(resolveGroupBy('2026-08-01', '2026-09-15')).toBe('month');
+    });
+});
+
+describe('dates §8.3 limits', () => {
+    it('reads max_date_range_days (0 = unlimited)', () => {
+        expect(maxDateRangeDaysFor({ limits: { max_date_range_days: 90 } })).toBe(90);
+        expect(maxDateRangeDaysFor({ limits: { max_date_range_days: 0 } })).toBeNull();
+        expect(maxDateRangeDaysFor(null)).toBeNull();
+    });
+
+    it('blocks ranges beyond role limit', () => {
+        expect(isWithinDateRangeLimit('2026-01-01', '2026-04-01', 90)).toBe(false);
+        expect(isWithinDateRangeLimit('2026-01-01', '2026-03-31', 90)).toBe(true);
+        expect(isWithinDateRangeLimit('2026-01-01', '2026-12-31', null)).toBe(true);
+        expect(dateRangeLimitMessage(60, 91)).toContain('60 dias');
+    });
+
+    it('formats and parses ISO dates', () => {
+        expect(formatRangeLabel('2026-08-01', '2026-08-31')).toBe('01/08/2026 – 31/08/2026');
+        expect(parseIsoDate('2026-09-29')?.getDate()).toBe(29);
+        expect(parseIsoDate('nope')).toBeNull();
+    });
+});
+
+describe('apiParams §6.2', () => {
+    it('forwards preset on analytics and transactions params', () => {
+        expect(toAnalyticsParams({
+            from: '2026-08-01',
+            to: '2026-08-31',
+            preset: 'custom',
+            group_by: 'day',
+            q: '',
+        })).toEqual({
+            from: '2026-08-01',
+            to: '2026-08-31',
+            preset: 'custom',
+            group_by: 'day',
+        });
+
+        expect(toTransactionsParams({
+            from: '2026-08-01',
+            to: '2026-08-31',
+            preset: 'custom',
+            page: 1,
+        })).toEqual({
+            from: '2026-08-01',
+            to: '2026-08-31',
+            preset: 'custom',
+            page: 1,
+        });
+    });
+
+    it('cleanApiParams drops empty values', () => {
+        expect(cleanApiParams({ a: '', b: null, c: 1 })).toEqual({ c: 1 });
+    });
+});

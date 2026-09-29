@@ -18,8 +18,9 @@ class NubankCsvParserFormatTest extends TestCase
         $parser = new NubankCsvParser;
 
         $this->assertTrue($parser->supports('csv', 'nubank'));
+        $this->assertTrue($parser->supports('csv', 'other'));
         $this->assertFalse($parser->supports('ofx', 'nubank'));
-        $this->assertFalse($parser->supports('csv', 'other'));
+        $this->assertFalse($parser->supports('csv', 'nubank_credit'));
     }
 
     public function test_parses_mvp_account_profile_fixture(): void

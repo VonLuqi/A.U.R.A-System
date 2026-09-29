@@ -7,8 +7,9 @@ import BrandMark from '../components/ui/BrandMark';
 import Spinner from '../components/ui/Spinner';
 
 /**
- * AuthContext (Etapa D §1.2.1 / §5.6) — sessão SPA.
+ * AuthContext (Etapa D §1.2.1 / PLAN_EXPANSAO §8.1) — sessão SPA.
  * Contrato: `{ user, status, login, logout, refreshUser }`
+ * `user` = AuthUser (`role`, `limits`, `usage`, `abilities`) — ver `lib/auth.js`.
  * status: `idle` | `loading` | `ready` (mount usa `loading` → `ready`).
  *
  * Segurança client (§5.6):

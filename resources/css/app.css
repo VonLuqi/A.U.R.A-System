@@ -130,3 +130,60 @@ summary:focus-visible {
   border: 1px solid var(--color-border-subtle) !important;
   color: var(--color-text-secondary) !important;
 }
+
+/* PLAN_EXPANSAO §8.3 — react-day-picker (tokens Aura) */
+.aura-day-picker.rdp-root {
+  --rdp-accent-color: var(--color-brand-primary);
+  --rdp-accent-background-color: color-mix(
+    in srgb,
+    var(--color-brand-primary) 22%,
+    var(--color-surface-default)
+  );
+  --rdp-today-color: var(--color-brand-primary);
+  --rdp-range_start-color: var(--color-text-on-brand);
+  --rdp-range_end-color: var(--color-text-on-brand);
+  --rdp-range_middle-color: var(--color-text-primary);
+  --rdp-day-height: 2.5rem;
+  --rdp-day-width: 2.5rem;
+  --rdp-day_button-height: 2.35rem;
+  --rdp-day_button-width: 2.35rem;
+  --rdp-day_button-border-radius: var(--radius-full);
+  font-family: var(--font-sans);
+  color: var(--color-text-primary);
+}
+
+.aura-day-picker .rdp-caption_label,
+.aura-day-picker .rdp-month_caption {
+  font-size: var(--text-caption);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.aura-day-picker .rdp-weekday {
+  font-size: var(--text-small);
+  color: var(--color-text-secondary);
+}
+
+.aura-day-picker .rdp-button_previous,
+.aura-day-picker .rdp-button_next {
+  color: var(--color-text-secondary);
+}
+
+.aura-day-picker .rdp-button_previous:hover,
+.aura-day-picker .rdp-button_next:hover {
+  background: var(--color-surface-raised);
+  color: var(--color-text-primary);
+}
+
+.aura-day-picker .rdp-day_button {
+  color: var(--color-text-primary);
+}
+
+.aura-day-picker .rdp-day_button:hover:not([disabled]):not([aria-disabled='true']) {
+  background: var(--color-surface-raised);
+}
+
+.aura-day-picker .rdp-disabled .rdp-day_button,
+.aura-day-picker .rdp-day_button:disabled {
+  color: var(--color-text-muted);
+}

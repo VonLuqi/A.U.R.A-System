@@ -1,0 +1,10 @@
+date,title,amount,category
+2026-09-01,Mercado Extra,89.90,supermercado
+2026-09-02,Spotify Ab,34.90,assinatura
+2026-09-03,Uber *Trip,18.90,transporte
+2026-09-04,Estorno Uber *Trip,-18.90,transporte
+2026-09-05,Magazine Luiza 1/12,127.42,casa
+2026-09-06,Pagamento recebido,-1500.00,pagamento
+2026-09-07,IOF Notion Labs,2.78,impostos
+2026-09-08,iFood *Pedido,45.50,restaurante
+2026-09-09,Total fatura,0.00,outros

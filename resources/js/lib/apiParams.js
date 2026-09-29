@@ -18,12 +18,14 @@ export function cleanApiParams(params) {
 
 /**
  * Params de analytics (sem paginação/sort).
+ * Contrato PLAN_EXPANSAO §6.2: from/to + preset + group_by.
  * @param {Record<string, unknown>} filters
  */
 export function toAnalyticsParams(filters) {
     return cleanApiParams({
         from: filters.from,
         to: filters.to,
+        preset: filters.preset,
         type: filters.type,
         category_id: filters.category_id,
         q: filters.q,
@@ -33,12 +35,14 @@ export function toAnalyticsParams(filters) {
 
 /**
  * Params de listagem de transações.
+ * Contrato PLAN_EXPANSAO §6.2: from/to + preset (+ paginação).
  * @param {Record<string, unknown>} filters
  */
 export function toTransactionsParams(filters) {
     return cleanApiParams({
         from: filters.from,
         to: filters.to,
+        preset: filters.preset,
         type: filters.type,
         category_id: filters.category_id,
         q: filters.q,

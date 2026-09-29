@@ -23,8 +23,9 @@ class OfxParserTest extends TestCase
         $this->assertInstanceOf(StatementParserInterface::class, $parser);
         $this->assertTrue($parser->supports('ofx', 'nubank'));
         $this->assertTrue($parser->supports('qfx', 'nubank'));
+        $this->assertTrue($parser->supports('ofx', 'other'));
         $this->assertFalse($parser->supports('csv', 'nubank'));
-        $this->assertFalse($parser->supports('ofx', 'other'));
+        $this->assertFalse($parser->supports('ofx', 'nubank_credit'));
     }
 
     public function test_parses_nubank_ofx_fixture_into_typed_transactions(): void

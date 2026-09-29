@@ -22,12 +22,38 @@ class StatementImport extends Model
 
     public const STATUS_FAILED = 'failed';
 
+    public const FORMAT_CSV = 'csv';
+
+    public const FORMAT_OFX = 'ofx';
+
+    public const FORMAT_CSV_CREDIT_CARD = 'csv_credit_card';
+
+    public const SOURCE_NUBANK = 'nubank';
+
+    public const SOURCE_NUBANK_CREDIT = 'nubank_credit';
+
+    public const SOURCE_OTHER = 'other';
+
     /** @var list<string> */
     public const STATUSES = [
         self::STATUS_PENDING,
         self::STATUS_PROCESSING,
         self::STATUS_COMPLETED,
         self::STATUS_FAILED,
+    ];
+
+    /** @var list<string> */
+    public const FORMATS = [
+        self::FORMAT_CSV,
+        self::FORMAT_OFX,
+        self::FORMAT_CSV_CREDIT_CARD,
+    ];
+
+    /** @var list<string> */
+    public const SOURCES = [
+        self::SOURCE_NUBANK,
+        self::SOURCE_NUBANK_CREDIT,
+        self::SOURCE_OTHER,
     ];
 
     /**

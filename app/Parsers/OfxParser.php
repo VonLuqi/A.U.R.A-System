@@ -16,10 +16,15 @@ use SplFileInfo;
 use Throwable;
 
 /**
- * OFX/QFX adapter (Etapa C §3.5).
+ * OFX/QFX adapter (Etapa C §3.5) — **conta corrente / banking only** in this cycle.
  *
- * Wraps cihansenturk/ofxparser (maintained fork of asgrim/ofxparser) and maps
- * bank/credit-card STMTTRN nodes to ParsedTransaction.
+ * Wraps cihansenturk/ofxparser and maps STMTTRN nodes under `$ofx->bankAccounts`
+ * to ParsedTransaction.
+ *
+ * Dívida (PLAN_EXPANSAO §5.3 / backlog): faturas de cartão OFX (`CREDITCARDMSGSRSV1`)
+ * não são um produto suportado aqui. A lib pode popular `bankAccounts` a partir de
+ * CCMSGSRSV1, mas Aura não testa, não aceita `source=nubank_credit` no OFX, nem
+ * aplica regras de sinal/skip de fatura — use CSV (`NubankCreditCardCsvParser`).
  */
 final class OfxParser implements StatementParserInterface
 {
@@ -29,7 +34,8 @@ final class OfxParser implements StatementParserInterface
 
     public function supports(string $format, string $source): bool
     {
-        return in_array($format, ['ofx', 'qfx'], true) && $source === 'nubank';
+        return in_array($format, ['ofx', 'qfx'], true)
+            && in_array($source, ['nubank', 'other'], true);
     }
 
     public function parse(SplFileInfo|string $file): ParseResult

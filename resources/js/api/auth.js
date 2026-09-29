@@ -1,5 +1,5 @@
 /**
- * Auth API — session cookie + CSRF (Etapa D §5.1 / §1.1.2).
+ * Auth API — session cookie + CSRF (Etapa D §5.1 / PLAN_EXPANSAO §8.1).
  * Sem Sanctum. Sem registro público.
  *
  * | Método | Path | Resposta |
@@ -9,7 +9,7 @@
  * | POST | `/api/logout` | 204 |
  * | GET | `/api/user` | `{ user: AuthUser }` · 401 → guest |
  *
- * @typedef {{ id: number, name: string, email: string }} AuthUser
+ * @typedef {import('../lib/auth').AuthUser} AuthUser
  */
 import api from './client';
 
