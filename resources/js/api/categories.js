@@ -53,7 +53,7 @@ export async function listCategories({ force = false, signal } = {}) {
  * @returns {Promise<Category>}
  */
 export async function createCategory(payload) {
-    const { data } = await api.post('/categories', payload);
+    const { data } = await api.post('/api/categories', payload);
     const category = data.data;
     clearCategoriesCache();
 

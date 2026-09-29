@@ -64,7 +64,11 @@ export default function CategorySelect({
                 role="group"
                 aria-label="Categoria"
             >
-                <Pill active={value === ''} onClick={() => onChange('')}>
+                <Pill
+                    active={value === ''}
+                    onClick={() => onChange('')}
+                    className="shrink-0"
+                >
                     Todas as categorias
                 </Pill>
                 {categories.map((category) => (
@@ -72,7 +76,7 @@ export default function CategorySelect({
                         key={category.id}
                         active={value === category.id}
                         onClick={() => onChange(category.id)}
-                        className="gap-2"
+                        className="shrink-0 gap-2"
                     >
                         <ColorSwatch color={category.color} />
                         {category.name}
