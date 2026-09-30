@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Statements;
 
+use App\Models\CreditCard;
 use App\Models\StatementImport;
 use App\Support\StatementFormatDetector;
 use Illuminate\Contracts\Validation\Validator;
@@ -46,6 +47,12 @@ class UploadStatementRequest extends FormRequest
                 'string',
                 'in:'.implode(',', StatementFormatDetector::ALLOWED_KINDS),
             ],
+            'credit_card_id' => [
+                'sometimes',
+                'nullable',
+                'integer',
+                'exists:credit_cards,id',
+            ],
         ];
     }
 
@@ -61,6 +68,7 @@ class UploadStatementRequest extends FormRequest
             'file.mimes' => 'Formato não suportado. Use CSV ou OFX (também .qfx).',
             'source.in' => 'Fonte inválida. Use nubank, nubank_credit ou other.',
             'statement_kind.in' => 'Tipo de extrato inválido. Use checking ou credit_card.',
+            'credit_card_id.exists' => 'Cartão inválido.',
         ];
     }
 
@@ -82,6 +90,24 @@ class UploadStatementRequest extends FormRequest
                 );
 
                 return;
+            }
+
+            $creditCardId = $this->input('credit_card_id');
+            if ($creditCardId !== null && $creditCardId !== '') {
+                $user = $this->user();
+                $owned = $user !== null && CreditCard::query()
+                    ->forUser($user)
+                    ->whereKey((int) $creditCardId)
+                    ->exists();
+
+                if (! $owned) {
+                    $validator->errors()->add(
+                        'credit_card_id',
+                        'Selecione um cartão cadastrado na sua conta.'
+                    );
+
+                    return;
+                }
             }
 
             /** @var UploadedFile|null $file */
@@ -122,6 +148,17 @@ class UploadStatementRequest extends FormRequest
     public function statementKind(): ?string
     {
         return StatementFormatDetector::normalizeKind($this->input('statement_kind'));
+    }
+
+    public function creditCardId(): ?int
+    {
+        $value = $this->input('credit_card_id');
+
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return (int) $value;
     }
 
     /**

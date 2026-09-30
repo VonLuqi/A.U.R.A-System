@@ -39,6 +39,7 @@
  * @typedef {{
  *   source?: string,
  *   statement_kind?: 'checking'|'credit_card'|string,
+ *   credit_card_id?: number|string|null,
  * }} UploadStatementOptions
  */
 import { ensureCsrf } from './auth';
@@ -129,7 +130,7 @@ export function normalizeUploadError(error) {
  */
 export async function uploadStatement(
     file,
-    { source = 'nubank', statement_kind = 'checking' } = {},
+    { source = 'nubank', statement_kind = 'checking', credit_card_id = null } = {},
 ) {
     await ensureCsrf();
 
@@ -142,6 +143,10 @@ export async function uploadStatement(
 
     if (statement_kind) {
         formData.append('statement_kind', statement_kind);
+    }
+
+    if (credit_card_id != null && credit_card_id !== '') {
+        formData.append('credit_card_id', String(credit_card_id));
     }
 
     // Não setar Content-Type — o browser define multipart boundary.

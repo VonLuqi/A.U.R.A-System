@@ -28,6 +28,8 @@ export function toAnalyticsParams(filters) {
         preset: filters.preset,
         type: filters.type,
         category_id: filters.category_id,
+        credit_card_id: filters.credit_card_id,
+        debtor_id: filters.debtor_id,
         q: filters.q,
         group_by: filters.group_by,
     });
@@ -45,6 +47,8 @@ export function toTransactionsParams(filters) {
         preset: filters.preset,
         type: filters.type,
         category_id: filters.category_id,
+        credit_card_id: filters.credit_card_id,
+        debtor_id: filters.debtor_id,
         q: filters.q,
         page: filters.page,
         per_page: filters.per_page,

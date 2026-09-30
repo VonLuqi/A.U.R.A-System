@@ -1,9 +1,11 @@
 ﻿import { useEffect, useId, useMemo, useState } from 'react';
-import { Menu, X } from 'lucide-react';
+import { Menu, UserRound, X } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { navItemsFor } from '../../lib/auth';
 import BrandMark from '../ui/BrandMark';
+import NotificationBell from '../notifications/NotificationBell';
+import ProfileSettingsModal from '../profile/ProfileSettingsModal';
 import UserMenu from './UserMenu';
 
 function navLinkClass({ isActive }) {
@@ -27,12 +29,14 @@ function mobileLinkClass({ isActive }) {
 }
 
 /**
- * TopNav — Etapa D §2.2 / PLAN_EXPANSAO §8.1.
- * Itens filtrados por `abilities` / papel via `navItemsFor(user)`.
+ * TopNav — Etapa D §2.2 / PLAN_EXPANSAO §8.1 · Etapa I §3.5.
+ * Itens filtrados por `abilities` / feature flags / papel via `navItemsFor(user)`.
+ * Conta via clique no avatar/nome (`UserMenu`); atalho “Conta” também no drawer mobile.
  */
 export default function TopNav() {
     const { user } = useAuth();
     const [menuOpen, setMenuOpen] = useState(false);
+    const [accountOpen, setAccountOpen] = useState(false);
     const location = useLocation();
     const menuId = useId();
     const navItems = useMemo(() => navItemsFor(user), [user]);
@@ -56,6 +60,11 @@ export default function TopNav() {
 
         return () => document.removeEventListener('keydown', onKeyDown);
     }, [menuOpen]);
+
+    function openAccount() {
+        setMenuOpen(false);
+        setAccountOpen(true);
+    }
 
     return (
         <header className="sticky top-0 z-20 border-b border-border-subtle bg-canvas/95 backdrop-blur-sm">
@@ -84,7 +93,8 @@ export default function TopNav() {
                 </div>
 
                 <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-                    <UserMenu />
+                    <NotificationBell />
+                    <UserMenu onOpenAccount={() => setAccountOpen(true)} />
                     <button
                         type="button"
                         className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-canvas sm:hidden"
@@ -118,9 +128,24 @@ export default function TopNav() {
                                 {item.label}
                             </NavLink>
                         ))}
+                        {user ? (
+                            <button
+                                type="button"
+                                className="flex w-full items-center gap-2 rounded-lg px-3 py-3 text-left text-body-lg font-normal text-ink-secondary transition-colors hover:bg-surface hover:font-medium hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+                                onClick={openAccount}
+                            >
+                                <UserRound size={18} strokeWidth={1.75} aria-hidden />
+                                Conta
+                            </button>
+                        ) : null}
                     </nav>
                 </div>
             ) : null}
+
+            <ProfileSettingsModal
+                open={accountOpen}
+                onClose={() => setAccountOpen(false)}
+            />
         </header>
     );
 }

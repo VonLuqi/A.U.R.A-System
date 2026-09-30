@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Statements;
 
+use App\Models\CreditCard;
 use App\Models\StatementImport;
 use App\Models\Transaction;
 use App\Models\User;
@@ -91,6 +92,86 @@ class CreditCardStatementUploadTest extends TestCase
         $this->assertSame('csv_credit_card', $import->format);
         $this->assertSame('nubank_credit', $import->source);
         $this->assertTrue(Storage::disk(StatementStorage::DISK)->exists($import->stored_path));
+    }
+
+    public function test_credit_card_import_links_default_card(): void
+    {
+        $user = User::factory()->create();
+        $default = CreditCard::factory()->default()->create(['user_id' => $user->id]);
+        CreditCard::factory()->create([
+            'user_id' => $user->id,
+            'is_default' => false,
+        ]);
+
+        $this->actingAs($user)->postJson('/api/statements/upload', [
+            'file' => $this->uploadedCreditCardFixture(),
+            'source' => 'nubank_credit',
+        ])->assertCreated();
+
+        $this->assertSame(
+            7,
+            Transaction::query()
+                ->where('user_id', $user->id)
+                ->where('credit_card_id', $default->id)
+                ->count(),
+        );
+    }
+
+    public function test_credit_card_import_links_override_card(): void
+    {
+        $user = User::factory()->create();
+        CreditCard::factory()->default()->create(['user_id' => $user->id]);
+        $override = CreditCard::factory()->create([
+            'user_id' => $user->id,
+            'is_default' => false,
+        ]);
+
+        $this->actingAs($user)->postJson('/api/statements/upload', [
+            'file' => $this->uploadedCreditCardFixture(),
+            'source' => 'nubank_credit',
+            'credit_card_id' => $override->id,
+        ])->assertCreated();
+
+        $this->assertSame(
+            7,
+            Transaction::query()
+                ->where('user_id', $user->id)
+                ->where('credit_card_id', $override->id)
+                ->count(),
+        );
+    }
+
+    public function test_credit_card_import_rejects_foreign_card_id(): void
+    {
+        $user = User::factory()->create();
+        $foreign = CreditCard::factory()->create();
+
+        $this->actingAs($user)->postJson('/api/statements/upload', [
+            'file' => $this->uploadedCreditCardFixture(),
+            'source' => 'nubank_credit',
+            'credit_card_id' => $foreign->id,
+        ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['credit_card_id']);
+    }
+
+    public function test_checking_import_does_not_set_credit_card_id(): void
+    {
+        $user = User::factory()->create();
+        CreditCard::factory()->default()->create(['user_id' => $user->id]);
+
+        $this->actingAs($user)->postJson('/api/statements/upload', [
+            'file' => $this->uploadedCheckingFixture(),
+            'statement_kind' => 'checking',
+        ])->assertCreated();
+
+        $this->assertSame(
+            0,
+            Transaction::query()
+                ->where('user_id', $user->id)
+                ->whereNotNull('credit_card_id')
+                ->count(),
+        );
     }
 
     public function test_header_sniff_routes_credit_card_without_explicit_source(): void

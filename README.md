@@ -13,22 +13,23 @@
   <img src="https://img.shields.io/badge/status-MVP-blue" alt="MVP" />
 </p>
 
-SPA de controle financeiro pessoal (single-admin) com importação de extratos Nubank, persistência estruturada e dashboard analítico. Stack: **Laravel 11 + React 19 + Vite 6**, pronta para HostGator (`aura.vonluqi.com`).
+SPA de controle financeiro pessoal com **multi-usuário RBAC**, importação de extratos Nubank, cartões/cobranças (feature flags) e dashboard analítico. Stack: **Laravel 11 + React 19 + Vite 6**, pronta para HostGator (`aura.vonluqi.com`).
 
 ---
 
 ## Sobre o Projeto
 
-**Aura** centraliza extratos bancários (início: **Nubank**, CSV/OFX/QFX) em uma única fonte de verdade, elimina planilhas manuais e oferece visão clara de entradas, saídas e tendências — com superfície de ataque mínima: **apenas o administrador** autenticado.
+**Aura** centraliza extratos bancários (início: **Nubank**, CSV/OFX/QFX) em uma única fonte de verdade, elimina planilhas manuais e oferece visão clara de entradas, saídas, metas, cartões e cobranças — com isolamento por usuário e cotas por papel (Admin, Subadmin, Visitante, Teste). Sem registro público, Sanctum ou OAuth: usuários nascem via Admin ou seeders.
 
-O MVP cobre autenticação por sessão, upload com parse e deduplicação, APIs de leitura/agregação e UI dark alinhada ao Design System (`docs/DESIGN-SYSTEM.MD`).
+O produto cobre autenticação por sessão, upload com parse e deduplicação, CRUD/metas/aliases, pilares Etapa H sob feature flags e UI dark alinhada ao Design System (`docs/DESIGN-SYSTEM.MD`).
 
 Documentação canônica:
 
 | Documento | Uso |
 | --- | --- |
 | [`docs/context.md`](docs/context.md) | Fonte da verdade (produto, arquitetura, decisões) |
-| [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) | Roadmap por etapas (A–E) |
+| [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) | Roadmap por etapas (A–H) |
+| [`docs/PLAN_CARTOES_EMPRESTIMOS.md`](docs/PLAN_CARTOES_EMPRESTIMOS.md) | Etapa H — cartões, empréstimos, notificações |
 | [`docs/DESIGN-SYSTEM.MD`](docs/DESIGN-SYSTEM.MD) | Tokens, tipografia, componentes |
 | [`docs/DEPLOY_HOSTGATOR.md`](docs/DEPLOY_HOSTGATOR.md) | Deploy em produção |
 
@@ -36,15 +37,20 @@ Documentação canônica:
 
 ## Principais Funcionalidades
 
-- **Login single-admin** — sessão Laravel + CSRF; sem registro público, Sanctum ou OAuth.
+- **Login multi-usuário (RBAC)** — sessão Laravel + CSRF; papéis Admin / Subadmin / Visitante / Teste; sem registro público, Sanctum ou OAuth.
 - **Importação de extratos** — drag-and-drop (CSV / OFX / QFX conta; fatura de cartão Nubank via **CSV**); validação client+server (máx. 10 MB); resumo de importadas / ignoradas / erros.
 - **Parse Nubank** — `NubankCsvParser`, `NubankCreditCardCsvParser` e `OfxParser` (banking) com fixtures e testes (`source` / `statement_kind` no upload). OFX de fatura = backlog.
 - **Deduplicação** — hashes estáveis; reupload não duplica movimentações.
-- **Dashboard analítico** — 4 metric cards, evolução por período, distribuição por categoria, tabela paginada.
-- **Filtros dinâmicos** — período (presets), tipo (entradas/saídas), categoria, busca por descrição (sincronizados na URL).
+- **Dashboard analítico** — metric cards do período + hub Cartões / A cobrar (feature-gated), evolução e distribuição por categoria.
+- **Movimentações** — aba `/transactions` com tabela paginada, CRUD e os mesmos filtros (período, tipo, categoria, cartão, pessoa, busca).
+- **Filtros dinâmicos** — sincronizados na URL no dashboard e nas movimentações.
+- **Datas em forms** — exibição **dd/mm/aaaa** (`DateInput`); API continua `YYYY-MM-DD`.
 - **Estados de UX** — skeletons, empty states (CTA de upload), erros e toasts.
 - **Storage privado** — arquivos fora do web root; retenção configurável (padrão 90 dias) + comando de purge.
 - **Rate limiting** — login e upload protegidos contra abuso.
+- **Cartões de crédito** (Etapa H, feature flag) — cadastro (limite, fechamento, vencimento, **padrão**); vínculo em transações; auto-stamp em imports `csv_credit_card`.
+- **Pessoas + cobranças** (Etapa H, feature flag) — CRUD de pessoas (`debtors`); empréstimos cash/limite; mark-paid / cancel; aba Pessoas em `/loans`.
+- **Notificações de vencimento** (Etapa H, feature flag) — sino in-app + e-mail opcional; command diário `aura:check-due-dates`.
 
 ---
 
@@ -66,7 +72,7 @@ Documentação canônica:
 | --- | --- |
 | **React 19** | SPA |
 | **Vite 6** + **laravel-vite-plugin** | Bundling / HMR |
-| **React Router 7** | Rotas client (`/login`, `/dashboard`, `/upload`) |
+| **React Router 7** | Rotas client (`/login`, `/dashboard`, `/transactions`, `/upload`, `/cards`, `/loans`, …) |
 | **Tailwind CSS 3** + **tokens.css** | Design System Aura (dark) |
 | **Axios** | HTTP com cookies + CSRF |
 | **Recharts** | Gráficos |
@@ -81,7 +87,7 @@ Documentação canônica:
 | Hospedagem alvo | **HostGator** (cPanel) — subdomínio `aura.vonluqi.com` |
 | Document root | Apenas `public/` |
 | CI / Deploy | GitHub Actions + FTP (ver `docs/DEPLOY_HOSTGATOR.md`) |
-| Cron | `php artisan schedule:run` (purge de extratos) |
+| Cron | `php artisan schedule:run` → `statements:purge-files` @ 03:15 · `aura:check-due-dates` @ 08:00 |
 
 ---
 
@@ -168,6 +174,29 @@ Detalhes, ordem das migrations e rollback: `docs/PLAN_EXPANSAO.md` §1.6 · prod
 3. Seguir sequência `down` → migrate → backfill → seeds → caches → `up` em `docs/DEPLOY_HOSTGATOR.md` §5.6.
 4. Smoke operador (login multi-papel, CRUD, CC, metas, cotas).
 
+**Etapa H (cartões / pessoas / cobranças / notificações)** — após migrations `2026_09_29_194*` e as de `is_default` / `debtors` / `debtor_id`:
+
+```bash
+# Backup antes (local ou prod)
+mysqldump -u aura_dev -p aura > backup_pre_etapa_h.sql
+
+php artisan migrate
+# opcional (só local/dev/testing):
+php artisan db:seed --class=Database\\Seeders\\DemoCreditCardsAndLoansSeeder
+
+# Liberar pilares gradualmente no .env (depois: config:clear && config:cache em prod)
+# AURA_FEATURE_CREDIT_CARDS=true
+# AURA_FEATURE_LOANS=true
+# AURA_FEATURE_NOTIFICATIONS=true
+
+php artisan schedule:list   # deve listar aura:check-due-dates @ 08:00
+php artisan aura:check-due-dates --dry-run
+```
+
+Janelas de alerta: `AURA_NOTIFY_CARD_DUE_DAYS` / `AURA_NOTIFY_LOAN_DUE_DAYS` (default `3`).  
+E-mail local: `MAIL_MAILER=log`. Smoke: Cartões (padrão) → Cobranças/Pessoas → filtros hub no dashboard → sino.  
+Detalhes: `docs/PLAN_CARTOES_EMPRESTIMOS.md` · produção: `docs/DEPLOY_HOSTGATOR.md` (§6.3 cron + §5.7).
+
 ### 5. Subir a aplicação (recomendado: same-origin)
 
 Em dois terminais (ou use `composer run dev`):
@@ -249,8 +278,24 @@ Base: [`.env.example`](.env.example). Produção: [`.env.production.example`](.e
 | `VITE_APP_NAME` | Nome exposto ao front Vite | `${APP_NAME}` |
 | `ADMIN_EMAIL` | E-mail do admin (`AdminUserSeeder`) | `admin@aura.local` |
 | `ADMIN_PASSWORD` | Senha do admin — **trocar** | `ChangeMeNow!123` |
+| `AURA_FEATURE_CREDIT_CARDS` | CRUD cartões + UI `/cards` + filtro/hub dashboard | `false` (rollout) / `true` local |
+| `AURA_FEATURE_LOANS` | Pessoas + cobranças + UI `/loans` + filtro/hub dashboard | `false` (rollout) / `true` local |
+| `AURA_FEATURE_NOTIFICATIONS` | Sino + `aura:check-due-dates` | `false` (rollout) / `true` local |
+| `AURA_NOTIFY_CARD_DUE_DAYS` | Janela (dias) alerta fatura | `3` |
+| `AURA_NOTIFY_LOAN_DUE_DAYS` | Janela (dias) alerta cobrança | `3` |
 
 Variáveis Redis / AWS / Memcached existem no skeleton Laravel; **não são necessárias** para o MVP padrão.
+
+### Comandos Artisan úteis
+
+| Comando | Uso |
+| --- | --- |
+| `php artisan migrate` | Schema app (`aura`) |
+| `php artisan test` | Suite PHPUnit em `aura_testing` |
+| `php artisan schedule:list` | Confirma purge @ 03:15 e due-dates @ 08:00 |
+| `php artisan aura:check-due-dates` | Gera notificações de vencimento (feature on) |
+| `php artisan aura:check-due-dates --dry-run` | Conta candidatos sem persistir |
+| `php artisan statements:purge-files` | Purge de arquivos de extrato |
 
 ---
 
@@ -301,8 +346,8 @@ Checklist resumido:
    ```
 
 4. Migrations + seeder do admin; permissões em `storage/` e `bootstrap/cache/`.
-5. Cron cPanel: `* * * * * php /caminho/para/aura/artisan schedule:run`.
-6. Validar HTTPS, login, upload Nubank e dashboard.
+5. Cron cPanel: `* * * * * php /caminho/para/aura/artisan schedule:run` (purge @ 03:15 + due-dates @ 08:00).
+6. Validar HTTPS, login, upload Nubank e dashboard; Etapa H: Cartões (padrão) → Cobranças/Pessoas → filtros hub → sino.
 
 Detalhes de FTP, CI e pitfalls de shell: **[`docs/DEPLOY_HOSTGATOR.md`](docs/DEPLOY_HOSTGATOR.md)** · Etapa E em [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md).
 

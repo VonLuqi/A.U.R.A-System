@@ -23,6 +23,7 @@ class StatementUploadController extends Controller
             $request->file('file'),
             $request->source(),
             $request->statementKind(),
+            $request->creditCardId(),
         );
 
         return response()->json([

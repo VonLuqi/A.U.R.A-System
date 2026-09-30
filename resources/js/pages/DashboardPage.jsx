@@ -1,46 +1,45 @@
-import { useCallback, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { useCallback, useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { ArrowRight, Plus } from 'lucide-react';
 import AliasChart from '../components/dashboard/AliasChart';
 import CategoryChart from '../components/dashboard/CategoryChart';
 import EvolutionChart from '../components/dashboard/EvolutionChart';
 import FilterBar from '../components/dashboard/FilterBar';
 import GoalsWidget from '../components/dashboard/GoalsWidget';
+import HubMetricCards from '../components/dashboard/HubMetricCards';
 import MetricCards from '../components/dashboard/MetricCards';
-import Pagination from '../components/dashboard/Pagination';
-import TransactionsTable from '../components/dashboard/TransactionsTable';
-import DeleteTransactionDialog from '../components/transactions/DeleteTransactionDialog';
-import RememberAliasDialog from '../components/transactions/RememberAliasDialog';
-import TransactionFormModal from '../components/transactions/TransactionFormModal';
+import TransactionsWidget from '../components/dashboard/TransactionsWidget';
 import GoalFormModal from '../components/goals/GoalFormModal';
 import ErrorState from '../components/ui/ErrorState';
 import Button from '../components/ui/Button';
 import PageHeader from '../components/layout/PageHeader';
 import { useAuth } from '../hooks/useAuth';
 import { useCategories } from '../hooks/useCategories';
+import { useCreditCards } from '../hooks/useCreditCards';
 import { useDashboardAnalytics } from '../hooks/useDashboardAnalytics';
 import { useDashboardFilters } from '../hooks/useDashboardFilters';
+import { useDebtors } from '../hooks/useDebtors';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useCreateGoal } from '../hooks/useGoalMutations';
-import {
-    useCreateTransaction,
-    useDeleteTransaction,
-    useRememberAlias,
-    useUpdateTransaction,
-} from '../hooks/useTransactionMutations';
 import { useTransactions } from '../hooks/useTransactions';
-import { ABILITIES, can } from '../lib/auth';
+import { ABILITIES, can, featureEnabled } from '../lib/auth';
 import { maxDateRangeDaysFor } from '../lib/dates';
 
+const PREVIEW_PER_PAGE = 6;
+
 /**
- * DashboardPage — Etapa D §4.8 / §5.3.4 / §5.5 / PLAN_EXPANSAO §8.2–§8.5.
+ * DashboardPage — métricas, gráficos e resumo de movimentações.
+ * Listagem completa: `/transactions`.
  */
 export default function DashboardPage() {
     useDocumentTitle('Dashboard · Aura');
 
+    const navigate = useNavigate();
     const { user } = useAuth();
     const canManageTransactions = can(user, ABILITIES.transactionsManage);
-    const canManageAliases = can(user, ABILITIES.aliasesManage);
     const canManageGoals = can(user, ABILITIES.goalsManage);
+    const showCreditCards = featureEnabled(user, 'credit_cards');
+    const showLoans = featureEnabled(user, 'loans');
     const maxDateRangeDays = maxDateRangeDaysFor(user);
 
     const {
@@ -50,29 +49,36 @@ export default function DashboardPage() {
         setPeriodPreset,
         setCustomRange,
         setFilters,
-        setPage,
     } = useDashboardFilters();
     const analytics = useDashboardAnalytics(apiFilters);
-    const transactions = useTransactions(apiFilters);
+    const previewFilters = useMemo(
+        () => ({
+            ...apiFilters,
+            page: 1,
+            per_page: PREVIEW_PER_PAGE,
+        }),
+        [apiFilters],
+    );
+    const transactions = useTransactions(previewFilters);
     const categories = useCategories();
+    const creditCards = useCreditCards({
+        is_active: 1,
+        per_page: 100,
+        enabled: showCreditCards,
+    });
+    const debtors = useDebtors({
+        per_page: 100,
+        enabled: showLoans,
+    });
 
-    const [formState, setFormState] = useState(null);
-    const [deleteTarget, setDeleteTarget] = useState(null);
-    const [rememberTarget, setRememberTarget] = useState(null);
     const [goalFormOpen, setGoalFormOpen] = useState(false);
 
-    const refetchTransactions = transactions.refetch;
     const refetchAnalytics = analytics.refetch;
-
-    const refreshDashboard = useCallback(async () => {
-        await Promise.all([refetchTransactions(), refetchAnalytics()]);
-    }, [refetchTransactions, refetchAnalytics]);
-
-    const createTx = useCreateTransaction({ onSuccess: refreshDashboard });
-    const updateTx = useUpdateTransaction({ onSuccess: refreshDashboard });
-    const deleteTx = useDeleteTransaction({ onSuccess: refreshDashboard });
-    const remember = useRememberAlias();
-    const createGoal = useCreateGoal({ onSuccess: refreshDashboard });
+    const createGoal = useCreateGoal({
+        onSuccess: useCallback(async () => {
+            await refetchAnalytics();
+        }, [refetchAnalytics]),
+    });
 
     const chartsLoading = analytics.status === 'loading';
     const analyticsError =
@@ -81,18 +87,9 @@ export default function DashboardPage() {
         (analytics.status === 'loading' && Boolean(analytics.data)) ||
         (transactions.status === 'loading' && transactions.data.length > 0);
 
-    const hasSearchQuery = Boolean(filters.q && filters.q.trim());
-    const hasTypeOrCategoryFilter = Boolean(filters.type || filters.category_id);
-    const looksEmptyAccount =
-        !hasSearchQuery &&
-        !hasTypeOrCategoryFilter &&
-        (transactions.meta?.total ?? 0) === 0 &&
-        (analytics.data?.cards?.transactions_count ?? 0) === 0;
-
-    const formOpen = formState !== null;
-    const formMode = formState?.mode === 'edit' ? 'edit' : 'create';
-    const formSubmitting =
-        formMode === 'edit' ? updateTx.isLoading : createTx.isLoading;
+    function openCreateTransaction() {
+        navigate('/transactions', { state: { openCreate: true } });
+    }
 
     return (
         <div className="flex flex-col gap-8 md:gap-10">
@@ -100,16 +97,25 @@ export default function DashboardPage() {
                 title="Visão geral"
                 description="Acompanhe entradas, saídas e tendências do período."
                 actions={
-                    canManageTransactions ? (
-                        <Button
-                            type="button"
-                            size="sm"
-                            onClick={() => setFormState({ mode: 'create' })}
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Link
+                            to="/transactions"
+                            className="inline-flex h-9 items-center gap-1 rounded-full px-3 text-caption font-medium text-ink-secondary no-underline transition hover:bg-surface-raised hover:text-ink"
                         >
-                            <Plus size={16} strokeWidth={2} aria-hidden />
-                            Nova transação
-                        </Button>
-                    ) : null
+                            Movimentações
+                            <ArrowRight size={14} strokeWidth={2} aria-hidden />
+                        </Link>
+                        {canManageTransactions ? (
+                            <Button
+                                type="button"
+                                size="sm"
+                                onClick={openCreateTransaction}
+                            >
+                                <Plus size={16} strokeWidth={2} aria-hidden />
+                                Nova transação
+                            </Button>
+                        ) : null}
+                    </div>
                 }
             />
 
@@ -126,6 +132,16 @@ export default function DashboardPage() {
                 onCategoryChange={(category_id) => setFilters({ category_id })}
                 categories={categories.data}
                 categoriesLoading={categories.status === 'loading'}
+                showCreditCardFilter={showCreditCards}
+                creditCardId={filters.credit_card_id}
+                onCreditCardChange={(credit_card_id) => setFilters({ credit_card_id })}
+                creditCards={creditCards.data}
+                creditCardsLoading={creditCards.status === 'loading'}
+                showDebtorFilter={showLoans}
+                debtorId={filters.debtor_id}
+                onDebtorChange={(debtor_id) => setFilters({ debtor_id })}
+                debtors={debtors.data}
+                debtorsLoading={debtors.status === 'loading'}
                 q={filters.q}
                 onSearchChange={(q) => setFilters({ q })}
                 refreshing={isRefreshing}
@@ -187,101 +203,32 @@ export default function DashboardPage() {
                 />
             </section>
 
-            <section className="flex flex-col gap-3" aria-label="Movimentações">
-                <h2 className="text-h2 font-semibold text-ink">Movimentações</h2>
-                <TransactionsTable
+            {(showCreditCards || showLoans) &&
+            !(analyticsError && !analytics.data?.hub) ? (
+                <section aria-label="Resumos de cartões e cobranças">
+                    <HubMetricCards
+                        hub={analytics.data?.hub}
+                        showCards={showCreditCards}
+                        showLoans={showLoans}
+                        loading={chartsLoading}
+                    />
+                </section>
+            ) : null}
+
+            <section aria-label="Movimentações recentes">
+                <TransactionsWidget
                     rows={transactions.data}
-                    sort={filters.sort}
-                    direction={filters.direction}
-                    onSortChange={({ sort, direction }) => setFilters({ sort, direction })}
-                    status={transactions.status}
-                    error={transactions.error}
+                    total={transactions.meta?.total ?? transactions.data.length}
+                    loading={transactions.status === 'loading'}
+                    error={
+                        transactions.status === 'error'
+                            ? transactions.error || 'Tente novamente em instantes.'
+                            : null
+                    }
                     onRetry={transactions.refetch}
-                    hasTypeOrCategoryFilter={hasTypeOrCategoryFilter}
-                    hasSearchQuery={hasSearchQuery}
-                    looksEmptyAccount={looksEmptyAccount}
-                    canRememberAlias={canManageAliases}
-                    onEdit={
-                        canManageTransactions
-                            ? (row) => setFormState({ mode: 'edit', transaction: row })
-                            : undefined
-                    }
-                    onDelete={
-                        canManageTransactions
-                            ? (row) => setDeleteTarget(row)
-                            : undefined
-                    }
-                    onRememberAlias={
-                        canManageAliases
-                            ? (row) => setRememberTarget(row)
-                            : undefined
-                    }
+                    onCreate={canManageTransactions ? openCreateTransaction : undefined}
                 />
-                {transactions.status !== 'error' ? (
-                    <Pagination meta={transactions.meta} onPageChange={setPage} />
-                ) : null}
             </section>
-
-            <TransactionFormModal
-                open={formOpen}
-                mode={formMode}
-                transaction={formState?.transaction ?? null}
-                categories={categories.data}
-                categoriesLoading={categories.status === 'loading'}
-                onCategoryCreated={() => {
-                    categories.refresh?.();
-                }}
-                submitting={formSubmitting}
-                onClose={() => {
-                    if (!formSubmitting) {
-                        setFormState(null);
-                    }
-                }}
-                onSubmit={async (payload) => {
-                    if (formMode === 'edit' && formState?.transaction?.id != null) {
-                        await updateTx.mutate(formState.transaction.id, payload);
-                    } else {
-                        await createTx.mutate(payload);
-                    }
-                    setFormState(null);
-                }}
-            />
-
-            <DeleteTransactionDialog
-                open={deleteTarget !== null}
-                transaction={deleteTarget}
-                submitting={deleteTx.isLoading}
-                onClose={() => {
-                    if (!deleteTx.isLoading) {
-                        setDeleteTarget(null);
-                    }
-                }}
-                onConfirm={async () => {
-                    if (!deleteTarget?.id) {
-                        return;
-                    }
-                    await deleteTx.mutate(deleteTarget.id);
-                    setDeleteTarget(null);
-                }}
-            />
-
-            <RememberAliasDialog
-                open={rememberTarget !== null}
-                transaction={rememberTarget}
-                submitting={remember.isLoading}
-                onClose={() => {
-                    if (!remember.isLoading) {
-                        setRememberTarget(null);
-                    }
-                }}
-                onSubmit={async (payload) => {
-                    if (!rememberTarget?.id) {
-                        return;
-                    }
-                    await remember.mutate(rememberTarget.id, payload);
-                    setRememberTarget(null);
-                }}
-            />
 
             {canManageGoals ? (
                 <GoalFormModal

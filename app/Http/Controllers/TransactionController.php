@@ -7,6 +7,7 @@ use App\Http\Requests\Transactions\StoreTransactionRequest;
 use App\Http\Requests\Transactions\UpdateTransactionRequest;
 use App\Http\Resources\TransactionResource;
 use App\Models\Transaction;
+use App\Services\CategoryBulkApplyService;
 use App\Services\ManualTransactionService;
 use App\Services\TransactionQueryService;
 use Illuminate\Http\JsonResponse;
@@ -55,7 +56,7 @@ class TransactionController extends Controller
     {
         $this->authorize('view', $transaction);
 
-        $transaction->loadMissing('category');
+        $transaction->loadMissing(['category', 'creditCard:id,name', 'loan:id,debtor_name,status']);
 
         return response()->json([
             'data' => (new TransactionResource($transaction))->resolve(),
@@ -66,14 +67,26 @@ class TransactionController extends Controller
         UpdateTransactionRequest $request,
         Transaction $transaction,
         ManualTransactionService $manuals,
+        CategoryBulkApplyService $categoryBulk,
     ): JsonResponse {
         $this->authorize('update', $transaction);
 
-        $updated = $manuals->update($request->user(), $transaction, $request->payload());
+        $payload = $request->payload();
+        $updated = $manuals->update($request->user(), $transaction, $payload);
 
-        return response()->json([
+        $response = [
             'data' => (new TransactionResource($updated))->resolve(),
-        ]);
+        ];
+
+        if ($request->applyCategoryToMatching() && array_key_exists('category_id', $payload)) {
+            $response['retroactive'] = $categoryBulk->applyToMatchingDescription(
+                $request->user(),
+                $updated,
+                $payload['category_id'],
+            );
+        }
+
+        return response()->json($response);
     }
 
     /**

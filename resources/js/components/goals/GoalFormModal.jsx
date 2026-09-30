@@ -11,6 +11,7 @@ import {
     parseGoalAmount,
 } from '../../lib/goals';
 import Button from '../ui/Button';
+import DateInput from '../ui/DateInput';
 import Input from '../ui/Input';
 import Label from '../ui/Label';
 import Modal from '../ui/Modal';
@@ -342,9 +343,8 @@ export default function GoalFormModal({
                     htmlFor={`${formId}-deadline`}
                     error={fieldErrors.deadline_on}
                 >
-                    <Input
+                    <DateInput
                         id={`${formId}-deadline`}
-                        type="date"
                         value={deadlineOn}
                         disabled={submitting}
                         invalid={Boolean(fieldErrors.deadline_on)}

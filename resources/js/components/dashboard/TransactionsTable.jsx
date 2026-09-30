@@ -61,6 +61,38 @@ function CategoryCell({ category }) {
     );
 }
 
+/**
+ * Chips de vínculo cartão / cobrança (PLAN_CARTOES_EMPRESTIMOS §6.5).
+ *
+ * @param {{
+ *   credit_card?: { name?: string }|null,
+ *   loan?: { debtor_name?: string }|null,
+ * }} row
+ */
+function LinkChips({ row }) {
+    const cardName = row.credit_card?.name;
+    const debtor = row.loan?.debtor_name;
+
+    if (!cardName && !debtor) {
+        return null;
+    }
+
+    return (
+        <div className="flex flex-wrap items-center gap-1.5">
+            {cardName ? (
+                <Badge tone="meta" title={`Cartão: ${cardName}`}>
+                    {cardName}
+                </Badge>
+            ) : null}
+            {debtor ? (
+                <Badge tone="meta" title={`Cobrança: ${debtor}`}>
+                    {debtor}
+                </Badge>
+            ) : null}
+        </div>
+    );
+}
+
 function RowActions({
     row,
     canRememberAlias,
@@ -265,6 +297,7 @@ function MobileTransactionCard({
                             {isCredit ? 'Entrada' : 'Saída'}
                         </Badge>
                         <CategoryCell category={row.category} />
+                        <LinkChips row={row} />
                     </div>
                 </div>
                 <p
@@ -480,6 +513,11 @@ export default function TransactionsTable({
                                                 >
                                                     {originalDescription || '—'}
                                                 </span>
+                                                {(row.credit_card?.name || row.loan?.debtor_name) ? (
+                                                    <div className="mt-1">
+                                                        <LinkChips row={row} />
+                                                    </div>
+                                                ) : null}
                                             </td>
                                             <td className="max-w-[10rem] px-4 py-3">
                                                 {aliasName ? (

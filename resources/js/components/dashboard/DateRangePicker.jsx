@@ -17,7 +17,7 @@ import {
 import { TOAST_DURATION } from '../../lib/toast';
 import { cx } from '../../lib/cx';
 import Button from '../ui/Button';
-import Input from '../ui/Input';
+import DateInput from '../ui/DateInput';
 import Pill from '../ui/Pill';
 import 'react-day-picker/style.css';
 
@@ -284,8 +284,7 @@ export default function DateRangePicker({
                               <span className="text-caption font-medium text-ink-secondary">
                                   Início
                               </span>
-                              <Input
-                                  type="date"
+                              <DateInput
                                   value={fromIsoValue}
                                   onChange={(event) =>
                                       handleInputChange('from', event.target.value)
@@ -297,8 +296,7 @@ export default function DateRangePicker({
                               <span className="text-caption font-medium text-ink-secondary">
                                   Fim
                               </span>
-                              <Input
-                                  type="date"
+                              <DateInput
                                   value={toIsoValue}
                                   onChange={(event) =>
                                       handleInputChange('to', event.target.value)

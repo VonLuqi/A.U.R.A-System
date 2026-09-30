@@ -10,12 +10,14 @@ import {
 import { featureEnabled } from '../lib/auth';
 import PageHeader from '../components/layout/PageHeader';
 import ErrorState from '../components/ui/ErrorState';
+import Label from '../components/ui/Label';
 import Dropzone from '../components/upload/Dropzone';
 import FileConstraintsHint from '../components/upload/FileConstraintsHint';
 import RowErrorsList from '../components/upload/RowErrorsList';
 import StatementKindPills from '../components/upload/StatementKindPills';
 import UploadSummaryCard from '../components/upload/UploadSummaryCard';
 import { useAuth } from '../hooks/useAuth';
+import { useCreditCards } from '../hooks/useCreditCards';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 
 /**
@@ -25,19 +27,41 @@ export default function UploadPage() {
     useDocumentTitle('Upload · Aura');
     const { user } = useAuth();
     const allowCreditCard = featureEnabled(user, 'credit_card_upload');
+    const allowCardsFeature = featureEnabled(user, 'credit_cards');
 
     const [kind, setKind] = useState(/** @type {'checking'|'credit_card'} */ ('checking'));
+    const [creditCardId, setCreditCardId] = useState('');
     const [uploading, setUploading] = useState(false);
     const [summary, setSummary] = useState(null);
     const [errorMessage, setErrorMessage] = useState('');
     const [errorReference, setErrorReference] = useState(null);
     const [errorCode, setErrorCode] = useState(/** @type {string|null} */ (null));
 
+    const cards = useCreditCards({
+        is_active: 1,
+        per_page: 50,
+        enabled: allowCardsFeature && kind === 'credit_card',
+    });
+
     useEffect(() => {
         if (!allowCreditCard && kind === 'credit_card') {
             setKind('checking');
         }
     }, [allowCreditCard, kind]);
+
+    useEffect(() => {
+        if (kind !== 'credit_card' || cards.status !== 'success') {
+            return;
+        }
+
+        const defaultCard = cards.data.find((card) => card.is_default);
+        const sole = cards.data.length === 1 ? cards.data[0] : null;
+        const preferred = defaultCard ?? sole;
+
+        if (preferred && !creditCardId) {
+            setCreditCardId(String(preferred.id));
+        }
+    }, [kind, cards.status, cards.data, creditCardId]);
 
     const kindOption = statementKindOption(kind);
 
@@ -60,6 +84,9 @@ export default function UploadPage() {
         setErrorMessage('');
         setErrorReference(null);
         setErrorCode(null);
+        if (nextKind !== 'credit_card') {
+            setCreditCardId('');
+        }
     }, []);
 
     const handleFileAccepted = useCallback(
@@ -76,6 +103,10 @@ export default function UploadPage() {
                 const data = await uploadStatement(file, {
                     source: option.source,
                     statement_kind: option.statement_kind,
+                    credit_card_id:
+                        kind === 'credit_card' && creditCardId
+                            ? Number(creditCardId)
+                            : null,
                 });
                 setSummary(data);
             } catch (error) {
@@ -91,7 +122,7 @@ export default function UploadPage() {
                 setUploading(false);
             }
         },
-        [kind],
+        [kind, creditCardId],
     );
 
     const rowErrors = summary?.row_errors ?? [];
@@ -118,6 +149,34 @@ export default function UploadPage() {
                             disabled={uploading}
                             allowCreditCard={allowCreditCard}
                         />
+                        {kind === 'credit_card' && allowCardsFeature ? (
+                            <div className="flex flex-col gap-1.5">
+                                <Label htmlFor="upload-credit-card">
+                                    Cartão destino (opcional)
+                                </Label>
+                                <select
+                                    id="upload-credit-card"
+                                    className="w-full rounded-lg border border-border bg-surface-sunken px-3 py-2.5 font-sans text-body text-ink outline-none transition-[border-color,box-shadow] focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-60"
+                                    value={creditCardId}
+                                    disabled={uploading || cards.status === 'loading'}
+                                    onChange={(event) => setCreditCardId(event.target.value)}
+                                >
+                                    <option value="">
+                                        Automático (padrão / único ativo)
+                                    </option>
+                                    {cards.data.map((card) => (
+                                        <option key={card.id} value={card.id}>
+                                            {card.name}
+                                            {card.is_default ? ' · padrão' : ''}
+                                            {card.last_four ? ` ···· ${card.last_four}` : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="text-caption text-ink-muted">
+                                    Lançamentos da fatura serão vinculados a este cartão.
+                                </p>
+                            </div>
+                        ) : null}
                         <FileConstraintsHint kind={kind} />
                     </div>
                 ) : null}

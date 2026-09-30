@@ -20,6 +20,10 @@ use Illuminate\Database\Eloquent\Builder;
  *     category_id?: ?int,
  *     q?: ?string,
  *     statement_import_id?: ?int,
+ *     credit_card_id?: ?int,
+ *     loan_id?: ?int,
+ *     debtor_id?: ?int,
+ *     has_loan?: bool|null,
  *     sort?: string,
  *     direction?: string,
  *     group_by?: string
@@ -38,7 +42,11 @@ final class TransactionQueryService
     public function forUser(User $user, array $filters = []): Builder
     {
         $query = Transaction::query()
-            ->with(['category:id,name,slug,type,color'])
+            ->with([
+                'category:id,name,slug,type,color',
+                'creditCard:id,name',
+                'loan:id,debtor_id,debtor_name,status',
+            ])
             ->forUser($user);
 
         $this->applyFilters($query, $filters);

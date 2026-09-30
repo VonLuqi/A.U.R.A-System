@@ -10,6 +10,7 @@ import Button from '../ui/Button';
 import Modal from '../ui/Modal';
 import CategorySelect from './CategorySelect';
 import DateRangePicker from './DateRangePicker';
+import FilterSelect from './FilterSelect';
 import SearchField from './SearchField';
 import TypePills from './TypePills';
 
@@ -35,6 +36,16 @@ export default function FilterBar({
     onCategoryChange,
     categories = [],
     categoriesLoading = false,
+    creditCardId = '',
+    onCreditCardChange,
+    creditCards = [],
+    creditCardsLoading = false,
+    showCreditCardFilter = false,
+    debtorId = '',
+    onDebtorChange,
+    debtors = [],
+    debtorsLoading = false,
+    showDebtorFilter = false,
     q,
     onSearchChange,
     refreshing = false,
@@ -43,6 +54,8 @@ export default function FilterBar({
     const [filtersOpen, setFiltersOpen] = useState(false);
 
     const selectedCategory = categories.find((c) => c.id === categoryId);
+    const selectedCard = creditCards.find((c) => c.id === creditCardId);
+    const selectedDebtor = debtors.find((d) => d.id === debtorId);
     const periodLabel =
         periodPreset === PERIOD_PRESET_IDS.custom
             ? formatRangeLabel(from, to) || PERIOD_PRESET_LABELS.custom
@@ -59,14 +72,58 @@ export default function FilterBar({
         if (categoryId !== '' && categoryId != null) {
             count += 1;
         }
+        if (showCreditCardFilter && creditCardId !== '' && creditCardId != null) {
+            count += 1;
+        }
+        if (showDebtorFilter && debtorId !== '' && debtorId != null) {
+            count += 1;
+        }
         return count;
-    }, [periodPreset, type, categoryId]);
+    }, [
+        periodPreset,
+        type,
+        categoryId,
+        showCreditCardFilter,
+        creditCardId,
+        showDebtorFilter,
+        debtorId,
+    ]);
 
     const summaryParts = [
         periodLabel,
         TYPE_LABELS[type] ?? 'Todos',
         selectedCategory?.name ?? 'Todas as categorias',
     ];
+    if (showCreditCardFilter) {
+        summaryParts.push(selectedCard?.name ?? 'Todos os cartões');
+    }
+    if (showDebtorFilter) {
+        summaryParts.push(selectedDebtor?.name ?? 'Todas as pessoas');
+    }
+
+    const creditCardSelect = showCreditCardFilter ? (
+        <FilterSelect
+            items={creditCards}
+            value={creditCardId}
+            loading={creditCardsLoading}
+            loadingLabel="Cartões…"
+            allLabel="Todos os cartões"
+            ariaLabel="Cartão"
+            onChange={onCreditCardChange}
+        />
+    ) : null;
+
+    const debtorSelect = showDebtorFilter ? (
+        <FilterSelect
+            items={debtors}
+            value={debtorId}
+            loading={debtorsLoading}
+            loadingLabel="Pessoas…"
+            allLabel="Todas as pessoas"
+            ariaLabel="Pessoa"
+            onChange={onDebtorChange}
+        />
+    ) : null;
 
     return (
         <section
@@ -135,6 +192,8 @@ export default function FilterBar({
                     loading={categoriesLoading}
                     onChange={onCategoryChange}
                 />
+                {creditCardSelect}
+                {debtorSelect}
                 <SearchField
                     value={q}
                     onChange={onSearchChange}
@@ -150,7 +209,7 @@ export default function FilterBar({
             <Modal
                 open={filtersOpen}
                 title="Filtros"
-                description="Período, tipo e categoria das movimentações."
+                description="Período, tipo, categoria e vínculos das movimentações."
                 onClose={() => setFiltersOpen(false)}
                 size="sm"
                 footer={(
@@ -195,6 +254,18 @@ export default function FilterBar({
                             onChange={onCategoryChange}
                         />
                     </div>
+                    {showCreditCardFilter ? (
+                        <div className="flex flex-col gap-2">
+                            <p className="text-caption font-medium text-ink-secondary">Cartão</p>
+                            {creditCardSelect}
+                        </div>
+                    ) : null}
+                    {showDebtorFilter ? (
+                        <div className="flex flex-col gap-2">
+                            <p className="text-caption font-medium text-ink-secondary">Pessoa</p>
+                            {debtorSelect}
+                        </div>
+                    ) : null}
                 </div>
             </Modal>
         </section>

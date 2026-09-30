@@ -54,11 +54,21 @@ export function useUpdateTransaction({ onSuccess } = {}) {
             setStatus('loading');
 
             try {
-                const data = await updateTransaction(id, payload);
-                toast.success('Lançamento atualizado.', { duration: TOAST_DURATION });
-                await onSuccess?.(data);
+                const result = await updateTransaction(id, payload);
+                const updated = result.retroactive?.updated;
+
+                if (typeof updated === 'number' && updated > 0) {
+                    toast.success(
+                        `Lançamento atualizado. Categoria aplicada em ${updated} outro${updated === 1 ? '' : 's'}.`,
+                        { duration: TOAST_DURATION },
+                    );
+                } else {
+                    toast.success('Lançamento atualizado.', { duration: TOAST_DURATION });
+                }
+
+                await onSuccess?.(result.data);
                 setStatus('success');
-                return data;
+                return result.data;
             } catch (error) {
                 setStatus('error');
                 if (!getValidationErrors(error)) {

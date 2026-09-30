@@ -55,23 +55,31 @@ describe('apiParams §6.2', () => {
             to: '2026-08-31',
             preset: 'custom',
             group_by: 'day',
+            credit_card_id: 3,
+            debtor_id: 7,
             q: '',
         })).toEqual({
             from: '2026-08-01',
             to: '2026-08-31',
             preset: 'custom',
             group_by: 'day',
+            credit_card_id: 3,
+            debtor_id: 7,
         });
 
         expect(toTransactionsParams({
             from: '2026-08-01',
             to: '2026-08-31',
             preset: 'custom',
+            credit_card_id: 3,
+            debtor_id: 7,
             page: 1,
         })).toEqual({
             from: '2026-08-01',
             to: '2026-08-31',
             preset: 'custom',
+            credit_card_id: 3,
+            debtor_id: 7,
             page: 1,
         });
     });

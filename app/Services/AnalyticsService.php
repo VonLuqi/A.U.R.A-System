@@ -2,6 +2,9 @@
 
 namespace App\Services;
 
+use App\Enums\LoanStatus;
+use App\Models\CreditCard;
+use App\Models\Loan;
 use App\Models\TransactionAlias;
 use App\Models\User;
 use App\Support\DateRangeQuery;
@@ -19,6 +22,8 @@ use Illuminate\Support\Arr;
  *     category_id?: ?int,
  *     q?: ?string,
  *     statement_import_id?: ?int,
+ *     credit_card_id?: ?int,
+ *     debtor_id?: ?int,
  *     group_by?: string
  * }
  */
@@ -38,6 +43,15 @@ final class AnalyticsService
      *         total_income: string,
      *         total_expense: string,
      *         transactions_count: int
+     *     },
+     *     hub: array{
+     *         credit_cards: array{active_count: int, period_spend: string},
+     *         loans: array{
+     *             open_count: int,
+     *             remaining_total: string,
+     *             overdue_count: int,
+     *             debtors_with_open: int
+     *         }
      *     },
      *     series: list<array{period: string, income: string, expense: string, balance: string}>,
      *     by_category: list<array{
@@ -77,10 +91,76 @@ final class AnalyticsService
 
         return [
             'cards' => $this->cards($user, $queryFilters),
+            'hub' => $this->hub($user, $queryFilters),
             'series' => $this->series($user, $queryFilters, $groupBy),
             'by_category' => $this->byCategory($user, $queryFilters),
             'by_alias' => $this->byAlias($user, $queryFilters),
             'goals' => $this->goalsAggregator->forUser($user),
+        ];
+    }
+
+    /**
+     * Resumos de cartões / cobranças para o topo do dashboard (independentes dos filtros de entidade).
+     *
+     * @param  AnalyticsFilters  $filters
+     * @return array{
+     *     credit_cards: array{active_count: int, period_spend: string},
+     *     loans: array{
+     *         open_count: int,
+     *         remaining_total: string,
+     *         overdue_count: int,
+     *         debtors_with_open: int
+     *     }
+     * }
+     */
+    public function hub(User $user, array $filters = []): array
+    {
+        $dateFilters = Arr::only($filters, ['from', 'to']);
+
+        $periodSpend = (float) ($this->transactions->baseForUser($user, $dateFilters)
+            ->toBase()
+            ->whereNotNull('transactions.credit_card_id')
+            ->where('transactions.type', 'debit')
+            ->selectRaw('COALESCE(SUM(transactions.amount), 0) as total')
+            ->value('total') ?? 0);
+
+        $activeCards = CreditCard::query()
+            ->forUser($user)
+            ->where('is_active', true)
+            ->count();
+
+        $openStatuses = [LoanStatus::Open->value, LoanStatus::Partial->value];
+
+        $openLoans = Loan::query()
+            ->forUser($user)
+            ->whereIn('status', $openStatuses)
+            ->get(['id', 'amount', 'paid_amount', 'due_on', 'status', 'debtor_id']);
+
+        $remaining = 0.0;
+        $overdue = 0;
+        $debtorIds = [];
+
+        foreach ($openLoans as $loan) {
+            $remaining += $loan->remainingAmount();
+            if ($loan->isOverdue()) {
+                $overdue++;
+            }
+            if ($loan->debtor_id !== null) {
+                $debtorIds[(int) $loan->debtor_id] = true;
+            }
+        }
+
+        return [
+            'credit_cards' => [
+                'active_count' => $activeCards,
+                'period_spend' => $this->money($periodSpend),
+            ],
+            'loans' => [
+                'open_count' => $openLoans->count(),
+                'remaining_total' => $this->money($remaining),
+                'overdue_count' => $overdue,
+                'debtors_with_open' => count($debtorIds),
+            ],
         ];
     }
 
