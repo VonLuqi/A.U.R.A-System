@@ -191,6 +191,7 @@ class StatementUploadServiceTest extends TestCase
             $this->app->make(\App\Services\UsageLimitService::class),
             $this->app->make(\App\Services\AliasResolutionService::class),
             $this->app->make(\App\Services\CreditCardService::class),
+            $this->app->make(\App\Services\InstallmentPlanService::class),
         );
 
         try {

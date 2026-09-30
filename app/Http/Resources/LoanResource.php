@@ -52,6 +52,12 @@ class LoanResource extends JsonResource
                 null,
             ),
             'notes' => $this->notes !== null ? (string) $this->notes : null,
+            'installment_plan_id' => $this->when(
+                $this->relationLoaded('installmentItem'),
+                fn () => $this->installmentItem !== null
+                    ? (int) $this->installmentItem->installment_plan_id
+                    : null,
+            ),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];

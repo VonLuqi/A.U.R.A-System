@@ -46,6 +46,7 @@ final class StatementUploadService
         private readonly UsageLimitService $usageLimits,
         private readonly AliasResolutionService $aliases,
         private readonly CreditCardService $creditCards,
+        private readonly InstallmentPlanService $installmentPlans,
     ) {}
 
     public function handle(
@@ -211,7 +212,62 @@ final class StatementUploadService
 
         $import->refresh();
 
+        $this->syncInstallmentPlansAfterPersist($user, $newRows, array_keys($patches));
+
         return UploadSummary::fromImport($import, $rowErrors, $rowsUpdated);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $newRows
+     * @param  list<int|string>  $patchedIds
+     */
+    private function syncInstallmentPlansAfterPersist(User $user, array $newRows, array $patchedIds): void
+    {
+        $ids = [];
+
+        if ($newRows !== []) {
+            $hashes = array_values(array_filter(array_map(
+                static fn (array $row): ?string => isset($row['unique_hash']) ? (string) $row['unique_hash'] : null,
+                $newRows,
+            )));
+
+            if ($hashes !== []) {
+                $ids = array_merge(
+                    $ids,
+                    Transaction::query()
+                        ->forUser($user)
+                        ->whereIn('unique_hash', $hashes)
+                        ->pluck('id')
+                        ->all(),
+                );
+            }
+        }
+
+        foreach ($patchedIds as $id) {
+            $ids[] = (int) $id;
+        }
+
+        $ids = array_values(array_unique(array_filter($ids)));
+        if ($ids === []) {
+            return;
+        }
+
+        $transactions = Transaction::query()
+            ->forUser($user)
+            ->whereIn('id', $ids)
+            ->where('type', 'debit')
+            ->get();
+
+        foreach ($transactions as $tx) {
+            try {
+                $this->installmentPlans->upsertFromTransaction($user, $tx);
+            } catch (Throwable $e) {
+                Log::warning('installment_plan.upsert_failed', [
+                    'transaction_id' => $tx->id,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+        }
     }
 
     /**

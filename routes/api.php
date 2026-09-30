@@ -16,6 +16,7 @@ use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\CreditCardController;
 use App\Http\Controllers\DebtorController;
 use App\Http\Controllers\GoalController;
+use App\Http\Controllers\InstallmentPlanController;
 use App\Http\Controllers\LoanController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProfileController;
@@ -178,6 +179,23 @@ Route::middleware(['auth', 'active'])->group(function () {
             ->name('api.loans.mark-paid');
         Route::post('/loans/{loan}/cancel', [LoanController::class, 'cancel'])
             ->name('api.loans.cancel');
+
+        Route::get('/installment-plans', [InstallmentPlanController::class, 'index'])
+            ->name('api.installment-plans.index');
+        Route::post('/installment-plans', [InstallmentPlanController::class, 'store'])
+            ->name('api.installment-plans.store');
+        Route::get('/installment-plans/{installment_plan}', [InstallmentPlanController::class, 'show'])
+            ->name('api.installment-plans.show');
+        Route::patch('/installment-plans/{installment_plan}', [InstallmentPlanController::class, 'update'])
+            ->name('api.installment-plans.update');
+        Route::post('/installment-plans/{installment_plan}/cancel', [InstallmentPlanController::class, 'cancel'])
+            ->name('api.installment-plans.cancel');
+        Route::post('/installment-plans/{installment_plan}/items/{number}/mark-paid', [InstallmentPlanController::class, 'markItemPaid'])
+            ->whereNumber('number')
+            ->name('api.installment-plans.items.mark-paid');
+        Route::post('/installment-plans/{installment_plan}/items/{number}/mark-open', [InstallmentPlanController::class, 'markItemOpen'])
+            ->whereNumber('number')
+            ->name('api.installment-plans.items.mark-open');
     });
 
     // In-app notifications (PLAN_CARTOES_EMPRESTIMOS §5)

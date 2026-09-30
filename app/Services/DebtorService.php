@@ -284,8 +284,19 @@ final class DebtorService
 
         $linked = 0;
         $skipped = 0;
+        /** @var InstallmentPlanService $plans */
+        $plans = app(InstallmentPlanService::class);
+        $attachedPlanIds = [];
 
-        DB::transaction(function () use ($user, $debtor, $ids, &$linked, &$skipped): void {
+        DB::transaction(function () use (
+            $user,
+            $debtor,
+            $ids,
+            $plans,
+            &$linked,
+            &$skipped,
+            &$attachedPlanIds,
+        ): void {
             $rows = Transaction::query()
                 ->forUser($user)
                 ->whereIn('id', $ids)
@@ -320,6 +331,17 @@ final class DebtorService
                     && (int) ($tx->loan->debtor_id ?? 0) === (int) $debtor->id
                 ) {
                     $skipped++;
+                    continue;
+                }
+
+                // Ensure installment plan exists for X/Y titles, then attach debtor to whole series.
+                $plan = $plans->upsertFromTransaction($user, $tx);
+                if ($plan !== null) {
+                    if (! isset($attachedPlanIds[$plan->id])) {
+                        $plans->attachDebtor($user, $plan, $debtor);
+                        $attachedPlanIds[$plan->id] = true;
+                    }
+                    $linked++;
                     continue;
                 }
 

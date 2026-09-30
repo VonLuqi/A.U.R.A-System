@@ -40,7 +40,7 @@ final class LoanService
     {
         $query = Loan::query()
             ->forUser($user)
-            ->with(['creditCard:id,name', 'debtor:id,name'])
+            ->with(['creditCard:id,name', 'debtor:id,name', 'installmentItem:id,loan_id,installment_plan_id'])
             ->orderByRaw("CASE status WHEN 'open' THEN 0 WHEN 'partial' THEN 1 WHEN 'paid' THEN 2 ELSE 3 END")
             ->orderBy('due_on')
             ->orderBy('id');

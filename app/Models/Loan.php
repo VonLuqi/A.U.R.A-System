@@ -87,6 +87,14 @@ class Loan extends Model
     }
 
     /**
+     * @return \Illuminate\Database\Eloquent\Relations\HasOne<InstallmentItem, $this>
+     */
+    public function installmentItem(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(InstallmentItem::class);
+    }
+
+    /**
      * @param  Builder<Loan>  $query
      * @return Builder<Loan>
      */
