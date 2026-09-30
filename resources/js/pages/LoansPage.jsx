@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     ArrowLeft,
     Ban,
@@ -14,8 +15,6 @@ import CancelLoanDialog from '../components/loans/CancelLoanDialog';
 import DebtorFormModal from '../components/loans/DebtorFormModal';
 import DeleteDebtorDialog from '../components/loans/DeleteDebtorDialog';
 import DeleteLoanDialog from '../components/loans/DeleteLoanDialog';
-import InstallmentPlanDetailModal from '../components/loans/InstallmentPlanDetailModal';
-import InstallmentPlanFormModal from '../components/loans/InstallmentPlanFormModal';
 import LinkDebtorTransactionsModal from '../components/loans/LinkDebtorTransactionsModal';
 import LoanFormModal from '../components/loans/LoanFormModal';
 import MarkLoanPaidDialog from '../components/loans/MarkLoanPaidDialog';
@@ -37,14 +36,6 @@ import {
     useUpdateDebtor,
 } from '../hooks/useDebtorMutations';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
-import {
-    useCancelInstallmentPlan,
-    useCreateInstallmentPlan,
-    useMarkInstallmentItemOpen,
-    useMarkInstallmentItemPaid,
-    useUpdateInstallmentPlan,
-} from '../hooks/useInstallmentPlanMutations';
-import { useInstallmentPlans } from '../hooks/useInstallmentPlans';
 import { useLoans } from '../hooks/useLoans';
 import {
     useCancelLoan,
@@ -53,7 +44,6 @@ import {
     useMarkLoanPaid,
     useUpdateLoan,
 } from '../hooks/useLoanMutations';
-import { getInstallmentPlan } from '../api/installmentPlans';
 import { cx } from '../lib/cx';
 import { formatDate, formatMoney } from '../lib/format';
 import {
@@ -81,7 +71,6 @@ const KIND_FILTERS = [
 const VIEW_TABS = [
     { id: 'people', label: 'Pessoas' },
     { id: 'loans', label: 'Empréstimos' },
-    { id: 'plans', label: 'Parcelamentos' },
 ];
 
 /**
@@ -89,15 +78,14 @@ const VIEW_TABS = [
  */
 export default function LoansPage() {
     useDocumentTitle('Devedores · Aura');
+    const navigate = useNavigate();
 
-    const [view, setView] = useState(/** @type {'people'|'loans'|'plans'} */ ('people'));
+    const [view, setView] = useState(/** @type {'people'|'loans'} */ ('people'));
     const [selectedDebtor, setSelectedDebtor] = useState(null);
     const [qInput, setQInput] = useState('');
     const [q, setQ] = useState('');
     const [peopleQInput, setPeopleQInput] = useState('');
     const [peopleQ, setPeopleQ] = useState('');
-    const [plansQInput, setPlansQInput] = useState('');
-    const [plansQ, setPlansQ] = useState('');
     const [statusFilter, setStatusFilter] = useState('');
     const [kindFilter, setKindFilter] = useState('');
     const [page, setPage] = useState(1);
@@ -110,8 +98,6 @@ export default function LoansPage() {
     const [markPaidTarget, setMarkPaidTarget] = useState(null);
     const [cancelTarget, setCancelTarget] = useState(null);
     const [deleteTarget, setDeleteTarget] = useState(null);
-    const [planFormOpen, setPlanFormOpen] = useState(false);
-    const [selectedPlan, setSelectedPlan] = useState(null);
 
     const creditCards = useCreditCards({ is_active: 1, per_page: 100 });
     const categories = useCategories();
@@ -150,24 +136,12 @@ export default function LoansPage() {
         [selectedDebtor?.id],
     );
 
-    const plansFilters = useMemo(
-        () => ({
-            page: view === 'plans' ? page : 1,
-            per_page: 50,
-            q: view === 'plans' && plansQ ? plansQ : undefined,
-            backfill: 1,
-            enabled: view === 'plans' && !selectedDebtor,
-        }),
-        [view, page, plansQ, selectedDebtor],
-    );
-
     const loans = useLoans(
         view === 'loans' && !selectedDebtor
             ? loansFilters
             : { enabled: false },
     );
     const detailLoans = useLoans(detailFilters);
-    const installmentPlans = useInstallmentPlans(plansFilters);
 
     const refreshDebtors = useCallback(async () => {
         await debtors.refetch();
@@ -180,13 +154,9 @@ export default function LoansPage() {
         ]);
     }, [loans.refetch, detailLoans.refetch]);
 
-    const refreshPlans = useCallback(async () => {
-        await installmentPlans.refetch();
-    }, [installmentPlans.refetch]);
-
     const refreshAll = useCallback(async () => {
-        await Promise.all([refreshDebtors(), refreshLoans(), refreshPlans()]);
-    }, [refreshDebtors, refreshLoans, refreshPlans]);
+        await Promise.all([refreshDebtors(), refreshLoans()]);
+    }, [refreshDebtors, refreshLoans]);
 
     const createDebtor = useCreateDebtor({ onSuccess: refreshDebtors });
     const updateDebtor = useUpdateDebtor({ onSuccess: refreshDebtors });
@@ -202,37 +172,6 @@ export default function LoansPage() {
     const deleteLoan = useDeleteLoan({ onSuccess: refreshAll });
     const markPaid = useMarkLoanPaid({ onSuccess: refreshAll });
     const cancelLoan = useCancelLoan({ onSuccess: refreshAll });
-
-    const createPlan = useCreateInstallmentPlan({
-        onSuccess: async (plan) => {
-            await refreshPlans();
-            setSelectedPlan(plan);
-        },
-    });
-    const updatePlan = useUpdateInstallmentPlan({
-        onSuccess: async (plan) => {
-            setSelectedPlan(plan);
-            await refreshAll();
-        },
-    });
-    const cancelPlan = useCancelInstallmentPlan({
-        onSuccess: async (plan) => {
-            setSelectedPlan(plan);
-            await refreshAll();
-        },
-    });
-    const markItemPaid = useMarkInstallmentItemPaid({
-        onSuccess: async (plan) => {
-            setSelectedPlan(plan);
-            await refreshAll();
-        },
-    });
-    const markItemOpen = useMarkInstallmentItemOpen({
-        onSuccess: async (plan) => {
-            setSelectedPlan(plan);
-            await refreshAll();
-        },
-    });
 
     useEffect(() => {
         const timer = window.setTimeout(() => {
@@ -252,15 +191,6 @@ export default function LoansPage() {
     }, [peopleQInput]);
 
     useEffect(() => {
-        const timer = window.setTimeout(() => {
-            setPlansQ(plansQInput.trim());
-            setPage(1);
-        }, 300);
-
-        return () => window.clearTimeout(timer);
-    }, [plansQInput]);
-
-    useEffect(() => {
         if (!selectedDebtor?.id) {
             return;
         }
@@ -276,19 +206,14 @@ export default function LoansPage() {
             return;
         }
         void refreshDebtors();
-        // Only when opening a debtor or when loan list total changes after expand.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedDebtor?.id, detailLoans.status, detailLoans.meta?.total]);
 
-    useEffect(() => {
-        if (!selectedPlan?.id) {
-            return;
-        }
-        const fresh = installmentPlans.data.find((p) => p.id === selectedPlan.id);
-        if (fresh) {
-            setSelectedPlan(fresh);
-        }
-    }, [installmentPlans.data, selectedPlan?.id]);
+    function openInstallmentPlan(planId) {
+        navigate('/transactions', {
+            state: { openInstallmentPlanId: planId },
+        });
+    }
 
     const formOpen = formState !== null;
     const formMode = formState?.mode === 'edit' ? 'edit' : 'create';
@@ -423,19 +348,10 @@ export default function LoansPage() {
                                     onDelete={() => setDeleteTarget(row)}
                                     onOpenPlan={
                                         row.installment_plan_id
-                                            ? async () => {
-                                                  try {
-                                                      const plan = await getInstallmentPlan(
-                                                          row.installment_plan_id,
-                                                      );
-                                                      setView('plans');
-                                                      setSelectedDebtor(null);
-                                                      setSelectedPlan(plan);
-                                                  } catch {
-                                                      setView('plans');
-                                                      setSelectedDebtor(null);
-                                                  }
-                                              }
+                                            ? () =>
+                                                  openInstallmentPlan(
+                                                      row.installment_plan_id,
+                                                  )
                                             : undefined
                                     }
                                 />
@@ -480,20 +396,10 @@ export default function LoansPage() {
                                             onDelete={() => setDeleteTarget(row)}
                                             onOpenPlan={
                                                 row.installment_plan_id
-                                                    ? async () => {
-                                                          try {
-                                                              const plan =
-                                                                  await getInstallmentPlan(
-                                                                      row.installment_plan_id,
-                                                                  );
-                                                              setView('plans');
-                                                              setSelectedDebtor(null);
-                                                              setSelectedPlan(plan);
-                                                          } catch {
-                                                              setView('plans');
-                                                              setSelectedDebtor(null);
-                                                          }
-                                                      }
+                                                    ? () =>
+                                                          openInstallmentPlan(
+                                                              row.installment_plan_id,
+                                                          )
                                                     : undefined
                                             }
                                         />
@@ -539,7 +445,7 @@ export default function LoansPage() {
         <div className="flex flex-col gap-8 md:gap-10">
             <PageHeader
                 title="Devedores"
-                description="Pessoas, cobranças e parcelamentos do cartão ou manuais."
+                description="Pessoas e cobranças. Parcelamentos do cartão ficam em Movimentações."
                 actions={(
                     <div className="flex flex-wrap items-center gap-2">
                         {!selectedDebtor && view === 'people' ? (
@@ -566,16 +472,6 @@ export default function LoansPage() {
                             >
                                 <Plus size={16} strokeWidth={2} aria-hidden />
                                 Novo empréstimo
-                            </Button>
-                        ) : null}
-                        {view === 'plans' && !selectedDebtor ? (
-                            <Button
-                                type="button"
-                                size="sm"
-                                onClick={() => setPlanFormOpen(true)}
-                            >
-                                <Plus size={16} strokeWidth={2} aria-hidden />
-                                Novo parcelamento
                             </Button>
                         ) : null}
                     </div>
@@ -803,125 +699,6 @@ export default function LoansPage() {
                 </>
             ) : null}
 
-            {!selectedDebtor && view === 'plans' ? (
-                <>
-                    <section className="flex flex-col gap-2" aria-label="Busca de parcelamentos">
-                        <Input
-                            type="search"
-                            value={plansQInput}
-                            placeholder="Buscar por título"
-                            aria-label="Buscar parcelamentos"
-                            className="min-w-0 w-full sm:max-w-xs"
-                            onChange={(event) => setPlansQInput(event.target.value)}
-                        />
-                    </section>
-
-                    {installmentPlans.status === 'error' ? (
-                        <ErrorState
-                            title="Não foi possível carregar os parcelamentos"
-                            message={installmentPlans.error || 'Tente novamente em instantes.'}
-                            onRetry={installmentPlans.refetch}
-                        />
-                    ) : null}
-
-                    {installmentPlans.status === 'loading' &&
-                    installmentPlans.data.length === 0 ? (
-                        <div aria-busy="true" aria-label="Carregando parcelamentos">
-                            <Skeleton.Table rows={5} />
-                        </div>
-                    ) : null}
-
-                    {installmentPlans.status !== 'error' &&
-                    installmentPlans.status !== 'loading' &&
-                    installmentPlans.data.length === 0 ? (
-                        <EmptyState
-                            title="Nenhum parcelamento"
-                            description="Importe uma fatura com Parcela X/Y ou cadastre manualmente."
-                            action={{
-                                label: 'Novo parcelamento',
-                                onClick: () => setPlanFormOpen(true),
-                            }}
-                        />
-                    ) : null}
-
-                    {installmentPlans.data.length > 0 ? (
-                        <div className="overflow-hidden rounded-xl border border-border-subtle bg-surface">
-                            <ul
-                                className={cx(
-                                    'divide-y divide-border-subtle',
-                                    installmentPlans.status === 'loading' && 'opacity-60',
-                                )}
-                            >
-                                {installmentPlans.data.map((plan) => (
-                                    <li key={plan.id}>
-                                        <button
-                                            type="button"
-                                            className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-surface-raised"
-                                            onClick={() => setSelectedPlan(plan)}
-                                        >
-                                            <div className="min-w-0 flex-1">
-                                                <p className="truncate text-body font-semibold text-ink">
-                                                    {plan.title}
-                                                </p>
-                                                <p className="mt-0.5 text-caption text-ink-secondary">
-                                                    {plan.paid_count}/{plan.total_count} pagas
-                                                    {plan.debtor?.name
-                                                        ? ` · ${plan.debtor.name}`
-                                                        : ''}
-                                                    {plan.credit_card?.name
-                                                        ? ` · ${plan.credit_card.name}`
-                                                        : ''}
-                                                </p>
-                                            </div>
-                                            <p className="shrink-0 text-body font-semibold tabular-nums text-ink">
-                                                {Number(plan.open_remaining_total) > 0
-                                                    ? formatMoney(plan.open_remaining_total)
-                                                    : '—'}
-                                            </p>
-                                            <ChevronRight
-                                                size={18}
-                                                className="shrink-0 text-ink-muted"
-                                                aria-hidden
-                                            />
-                                        </button>
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                    ) : null}
-
-                    {installmentPlans.meta && installmentPlans.meta.last_page > 1 ? (
-                        <div className="flex items-center justify-center gap-2">
-                            <Button
-                                type="button"
-                                variant="secondary"
-                                size="sm"
-                                disabled={page <= 1 || installmentPlans.status === 'loading'}
-                                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                            >
-                                Anterior
-                            </Button>
-                            <span className="text-caption text-ink-secondary">
-                                Página {installmentPlans.meta.current_page} de{' '}
-                                {installmentPlans.meta.last_page}
-                            </span>
-                            <Button
-                                type="button"
-                                variant="secondary"
-                                size="sm"
-                                disabled={
-                                    page >= installmentPlans.meta.last_page ||
-                                    installmentPlans.status === 'loading'
-                                }
-                                onClick={() => setPage((p) => p + 1)}
-                            >
-                                Próxima
-                            </Button>
-                        </div>
-                    ) : null}
-                </>
-            ) : null}
-
             <Modal
                 open={filtersOpen}
                 title="Filtros"
@@ -983,59 +760,6 @@ export default function LoansPage() {
                         await createLoan.mutate(withDebtor);
                     }
                     setFormState(null);
-                }}
-            />
-
-            <InstallmentPlanFormModal
-                open={planFormOpen}
-                creditCards={creditCards.data}
-                debtors={debtors.data}
-                submitting={createPlan.isLoading}
-                onClose={() => {
-                    if (!createPlan.isLoading) {
-                        setPlanFormOpen(false);
-                    }
-                }}
-                onSubmit={async (payload) => {
-                    await createPlan.mutate(payload);
-                    setPlanFormOpen(false);
-                }}
-            />
-
-            <InstallmentPlanDetailModal
-                open={selectedPlan !== null}
-                plan={selectedPlan}
-                debtors={debtors.data}
-                submitting={
-                    updatePlan.isLoading ||
-                    cancelPlan.isLoading ||
-                    markItemPaid.isLoading ||
-                    markItemOpen.isLoading
-                }
-                onClose={() => setSelectedPlan(null)}
-                onMarkPaid={async (number) => {
-                    if (!selectedPlan?.id) {
-                        return;
-                    }
-                    await markItemPaid.mutate(selectedPlan.id, number);
-                }}
-                onMarkOpen={async (number) => {
-                    if (!selectedPlan?.id) {
-                        return;
-                    }
-                    await markItemOpen.mutate(selectedPlan.id, number);
-                }}
-                onUpdate={async (payload) => {
-                    if (!selectedPlan?.id) {
-                        return;
-                    }
-                    await updatePlan.mutate(selectedPlan.id, payload);
-                }}
-                onCancelPlan={async () => {
-                    if (!selectedPlan?.id) {
-                        return;
-                    }
-                    await cancelPlan.mutate(selectedPlan.id);
                 }}
             />
 

@@ -148,6 +148,10 @@ export default function InstallmentPlanDetailModal({
                             </option>
                         ))}
                     </select>
+                    <p className="text-caption text-ink-muted">
+                        Se vinculado, as parcelas abertas aparecem em Empréstimos. Pagar uma
+                        parcela não remove a pessoa — só a quitação total (ou limpar aqui).
+                    </p>
                 </div>
 
                 {actionError ? (
