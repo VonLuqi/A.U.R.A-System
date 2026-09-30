@@ -5,7 +5,7 @@ import Card from '../ui/Card';
 
 /**
  * UploadSummaryCard — Etapa D §3.6.1 / §5.6.
- * Sucesso / sucesso parcial (skips e avisos de linha).
+ * Sucesso / sucesso parcial (skips, updates e avisos de linha).
  * Whitelist de campos públicos — nunca renderiza `stored_path` / `checksum`.
  *
  * @param {{
@@ -29,17 +29,29 @@ export default function UploadSummaryCard({ summary, onReset }) {
     void _checksum;
     void _fileChecksum;
 
+    const rowsUpdated = Number(publicSummary.rows_updated ?? 0);
     const rowsSkipped = Number(publicSummary.rows_skipped ?? 0);
     const rowErrorsCount = Number(publicSummary.row_errors_count ?? 0);
-    const hasWarnings = rowsSkipped > 0 || rowErrorsCount > 0;
+    const hasWarnings = rowsSkipped > 0 || rowErrorsCount > 0 || rowsUpdated > 0;
     const formatLabel = String(publicSummary.format ?? '').toUpperCase() || '—';
 
     const metrics = [
         { label: 'Total', value: publicSummary.rows_total ?? 0 },
         { label: 'Importadas', value: publicSummary.rows_imported ?? 0 },
+        { label: 'Atualizadas', value: rowsUpdated },
         { label: 'Ignoradas', value: rowsSkipped },
         { label: 'Erros de linha', value: rowErrorsCount },
     ];
+
+    const notices = [];
+    if (rowsUpdated > 0) {
+        notices.push(
+            'Movimentações já existentes foram atualizadas (ex.: vínculo com cartão ou apelido).',
+        );
+    }
+    if (rowsSkipped > 0) {
+        notices.push('Movimentações já existentes sem mudança foram ignoradas.');
+    }
 
     return (
         <Card className="flex flex-col gap-5">
@@ -58,7 +70,7 @@ export default function UploadSummaryCard({ summary, onReset }) {
                 </div>
             </div>
 
-            <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
                 {metrics.map((metric) => (
                     <div
                         key={metric.label}
@@ -70,10 +82,14 @@ export default function UploadSummaryCard({ summary, onReset }) {
                 ))}
             </dl>
 
-            {rowsSkipped > 0 ? (
-                <p className="text-caption text-ink-secondary">
-                    Movimentações já existentes foram ignoradas.
-                </p>
+            {notices.length > 0 ? (
+                <div className="flex flex-col gap-1">
+                    {notices.map((text) => (
+                        <p key={text} className="text-caption text-ink-secondary">
+                            {text}
+                        </p>
+                    ))}
+                </div>
             ) : null}
 
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">

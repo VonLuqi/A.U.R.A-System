@@ -276,7 +276,7 @@ export default function DateRangePicker({
                       aria-label="Escolher intervalo de datas"
                       style={{ top: anchor.top, left: anchor.left }}
                       className={cx(
-                          'fixed z-50 w-[min(100vw-1rem,22rem)] rounded-2xl border border-border bg-surface p-4 shadow-none',
+                          'fixed z-[110] w-[min(100vw-1rem,22rem)] rounded-2xl border border-border bg-surface p-4 shadow-none',
                       )}
                   >
                       <div className="mb-3 grid grid-cols-2 gap-2">

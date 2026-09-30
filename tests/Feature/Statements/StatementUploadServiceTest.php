@@ -190,6 +190,7 @@ class StatementUploadServiceTest extends TestCase
             new \App\Parsers\StatementParserResolver([$parser]),
             $this->app->make(\App\Services\UsageLimitService::class),
             $this->app->make(\App\Services\AliasResolutionService::class),
+            $this->app->make(\App\Services\CreditCardService::class),
         );
 
         try {
@@ -310,6 +311,74 @@ class StatementUploadServiceTest extends TestCase
         $payload = $second->toArray();
         $this->assertSame(0, $payload['rows_imported']);
         $this->assertSame(5, $payload['rows_skipped']);
+        $this->assertSame(0, $payload['rows_updated']);
         $this->assertSame('completed', $payload['status']);
+    }
+
+    public function test_reupload_with_credit_card_updates_existing_links(): void
+    {
+        $user = User::factory()->create();
+        $card = \App\Models\CreditCard::factory()->default()->create(['user_id' => $user->id]);
+        $file1 = $this->uploadedFixture('nubank/sample_account.csv', 'NU_sample.csv');
+        $file2 = $this->uploadedFixture('nubank/sample_account.csv', 'NU_sample.csv');
+
+        $first = $this->service()->handle($user, $file1, 'nubank', 'checking');
+        $this->assertSame(4, $first->rowsImported);
+        $this->assertSame(
+            0,
+            Transaction::query()->where('user_id', $user->id)->whereNotNull('credit_card_id')->count(),
+        );
+
+        $second = $this->service()->handle(
+            $user,
+            $file2,
+            'nubank',
+            'checking',
+            $card->id,
+        );
+
+        $this->assertSame('completed', $second->status);
+        $this->assertSame(0, $second->rowsImported);
+        $this->assertSame(4, $second->rowsUpdated);
+        $this->assertSame(1, $second->rowsSkipped); // zero-value rowError
+        $this->assertSame(4, Transaction::query()->count());
+        $this->assertSame(
+            4,
+            Transaction::query()
+                ->where('user_id', $user->id)
+                ->where('credit_card_id', $card->id)
+                ->count(),
+        );
+    }
+
+    public function test_reupload_same_card_link_is_noop_skip(): void
+    {
+        $user = User::factory()->create();
+        $card = \App\Models\CreditCard::factory()->default()->create(['user_id' => $user->id]);
+        $file1 = $this->uploadedCreditCardFixture();
+        $file2 = $this->uploadedCreditCardFixture();
+
+        $first = $this->service()->handle($user, $file1, 'nubank_credit', 'credit_card', $card->id);
+        $this->assertGreaterThan(0, $first->rowsImported);
+
+        $second = $this->service()->handle($user, $file2, 'nubank_credit', 'credit_card', $card->id);
+        $this->assertSame(0, $second->rowsImported);
+        $this->assertSame(0, $second->rowsUpdated);
+        $this->assertSame($first->rowsImported + $first->rowsSkipped, $second->rowsSkipped);
+        $this->assertSame(
+            $first->rowsImported,
+            Transaction::query()->where('credit_card_id', $card->id)->count(),
+        );
+    }
+
+    private function uploadedCreditCardFixture(string $clientName = 'fatura.csv'): \Illuminate\Http\UploadedFile
+    {
+        return new \Illuminate\Http\UploadedFile(
+            base_path('tests/Fixtures/statements/nubank_credit_card_sample.csv'),
+            $clientName,
+            'text/plain',
+            null,
+            true,
+        );
     }
 }

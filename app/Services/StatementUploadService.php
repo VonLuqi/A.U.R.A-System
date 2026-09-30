@@ -94,6 +94,7 @@ final class StatementUploadService
                 'format' => (string) $import->format,
                 'rows_total' => (int) $import->rows_total,
                 'rows_imported' => (int) $import->rows_imported,
+                'rows_updated' => (int) $summary->rowsUpdated,
                 'rows_skipped' => (int) $import->rows_skipped,
                 'checksum' => (string) $import->checksum,
             ]);
@@ -132,24 +133,44 @@ final class StatementUploadService
         );
 
         $hashes = array_column($prepared['rows'], 'unique_hash');
-        $existing = $hashes === []
+        /** @var \Illuminate\Support\Collection<string, Transaction> $existingByHash */
+        $existingByHash = $hashes === []
             ? collect()
             : Transaction::query()
                 ->forUser((int) $import->user_id)
                 ->whereIn('unique_hash', $hashes)
-                ->pluck('unique_hash');
+                ->get(['id', 'unique_hash', 'credit_card_id', 'category_id', 'description'])
+                ->keyBy('unique_hash');
 
-        $existingSet = array_fill_keys($existing->all(), true);
+        $seenHashes = [];
         $newRows = [];
+        $patches = [];
         $duplicateSkips = 0;
+        $rowsUpdated = 0;
 
         foreach ($prepared['rows'] as $row) {
-            if (isset($existingSet[$row['unique_hash']])) {
-                $duplicateSkips++;
+            $hash = (string) $row['unique_hash'];
+
+            if (isset($seenHashes[$hash])) {
+                continue;
+            }
+            $seenHashes[$hash] = true;
+
+            $existing = $existingByHash->get($hash);
+            if ($existing instanceof Transaction) {
+                $patch = $this->buildReimportPatch($existing, $row);
+                if ($patch === []) {
+                    $duplicateSkips++;
+
+                    continue;
+                }
+
+                $patches[(int) $existing->id] = $patch;
+                $rowsUpdated++;
 
                 continue;
             }
-            $existingSet[$row['unique_hash']] = true; // guard intra-batch dupes
+
             $newRows[] = $row;
         }
 
@@ -157,11 +178,26 @@ final class StatementUploadService
         $rowsSkipped = $duplicateSkips + $intraBatchSkips + count($rowErrors);
         $rowsImported = count($newRows);
         $rowsTotal = $parseResult->rowsTotal;
+        $userId = (int) $import->user_id;
 
-        DB::transaction(function () use ($import, $newRows, $rowsTotal, $rowsImported, $rowsSkipped): void {
-            // §4.3.4 — pre-filtered new rows; chunk insert (200). Prefer explicit filter over insertOrIgnore.
+        DB::transaction(function () use (
+            $import,
+            $newRows,
+            $patches,
+            $userId,
+            $rowsTotal,
+            $rowsImported,
+            $rowsSkipped,
+        ): void {
             foreach (array_chunk($newRows, self::INSERT_CHUNK) as $chunk) {
                 Transaction::query()->insert($chunk);
+            }
+
+            foreach ($patches as $transactionId => $patch) {
+                Transaction::query()
+                    ->forUser($userId)
+                    ->whereKey($transactionId)
+                    ->update($patch);
             }
 
             $import->update([
@@ -175,7 +211,49 @@ final class StatementUploadService
 
         $import->refresh();
 
-        return UploadSummary::fromImport($import, $rowErrors);
+        return UploadSummary::fromImport($import, $rowErrors, $rowsUpdated);
+    }
+
+    /**
+     * Safe reimport patch: link/relink card when provided; refresh alias display/category.
+     * Never clears credit_card_id, never mutates amount/date/type/hash.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
+    private function buildReimportPatch(Transaction $existing, array $row): array
+    {
+        $patch = [];
+
+        if ($row['credit_card_id'] !== null
+            && (int) ($existing->credit_card_id ?? 0) !== (int) $row['credit_card_id']
+        ) {
+            $patch['credit_card_id'] = (int) $row['credit_card_id'];
+        }
+
+        $payload = json_decode((string) ($row['raw_payload'] ?? ''), true);
+        $hadAlias = is_array($payload) && isset($payload['alias_id']);
+
+        if ($hadAlias) {
+            if ($row['category_id'] !== null
+                && (int) ($existing->category_id ?? 0) !== (int) $row['category_id']
+            ) {
+                $patch['category_id'] = (int) $row['category_id'];
+            }
+
+            $description = (string) ($row['description'] ?? '');
+            if ($description !== '' && $description !== (string) $existing->description) {
+                $patch['description'] = $description;
+            }
+        }
+
+        if ($patch === []) {
+            return [];
+        }
+
+        $patch['updated_at'] = $row['updated_at'] ?? now();
+
+        return $patch;
     }
 
     /**
@@ -194,8 +272,11 @@ final class StatementUploadService
         $seen = [];
         $intraBatchSkips = 0;
 
+        // Stamp card on fatura imports (default/override) or when UI sends an explicit card.
         $creditCardId = null;
-        if ($import->format === StatementImport::FORMAT_CSV_CREDIT_CARD) {
+        if ($import->format === StatementImport::FORMAT_CSV_CREDIT_CARD
+            || $creditCardOverrideId !== null
+        ) {
             $creditCardId = $this->creditCards->resolveForImport($user, $creditCardOverrideId);
         }
 

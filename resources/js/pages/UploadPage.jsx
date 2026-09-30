@@ -40,7 +40,7 @@ export default function UploadPage() {
     const cards = useCreditCards({
         is_active: 1,
         per_page: 50,
-        enabled: allowCardsFeature && kind === 'credit_card',
+        enabled: allowCardsFeature,
     });
 
     useEffect(() => {
@@ -50,7 +50,7 @@ export default function UploadPage() {
     }, [allowCreditCard, kind]);
 
     useEffect(() => {
-        if (kind !== 'credit_card' || cards.status !== 'success') {
+        if (!allowCardsFeature || kind !== 'credit_card' || cards.status !== 'success') {
             return;
         }
 
@@ -61,7 +61,7 @@ export default function UploadPage() {
         if (preferred && !creditCardId) {
             setCreditCardId(String(preferred.id));
         }
-    }, [kind, cards.status, cards.data, creditCardId]);
+    }, [allowCardsFeature, kind, cards.status, cards.data, creditCardId]);
 
     const kindOption = statementKindOption(kind);
 
@@ -103,10 +103,7 @@ export default function UploadPage() {
                 const data = await uploadStatement(file, {
                     source: option.source,
                     statement_kind: option.statement_kind,
-                    credit_card_id:
-                        kind === 'credit_card' && creditCardId
-                            ? Number(creditCardId)
-                            : null,
+                    credit_card_id: creditCardId ? Number(creditCardId) : null,
                 });
                 setSummary(data);
             } catch (error) {
@@ -149,7 +146,7 @@ export default function UploadPage() {
                             disabled={uploading}
                             allowCreditCard={allowCreditCard}
                         />
-                        {kind === 'credit_card' && allowCardsFeature ? (
+                        {allowCardsFeature ? (
                             <div className="flex flex-col gap-1.5">
                                 <Label htmlFor="upload-credit-card">
                                     Cartão destino (opcional)
@@ -162,7 +159,9 @@ export default function UploadPage() {
                                     onChange={(event) => setCreditCardId(event.target.value)}
                                 >
                                     <option value="">
-                                        Automático (padrão / único ativo)
+                                        {kind === 'credit_card'
+                                            ? 'Automático (padrão / único ativo)'
+                                            : 'Sem vínculo com cartão'}
                                     </option>
                                     {cards.data.map((card) => (
                                         <option key={card.id} value={card.id}>
@@ -173,7 +172,9 @@ export default function UploadPage() {
                                     ))}
                                 </select>
                                 <p className="text-caption text-ink-muted">
-                                    Lançamentos da fatura serão vinculados a este cartão.
+                                    {kind === 'credit_card'
+                                        ? 'Lançamentos da fatura serão vinculados a este cartão. Reimportar atualiza o vínculo sem duplicar.'
+                                        : 'Opcional: vincula saídas deste extrato ao cartão. Reimportar atualiza o vínculo sem duplicar.'}
                                 </p>
                             </div>
                         ) : null}

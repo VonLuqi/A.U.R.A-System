@@ -10,8 +10,10 @@ namespace App\Support;
  * Does NOT include `user_id` or `statement_import_id` in the payload. Multi-tenant
  * isolation is enforced by the DB unique index `(user_id, unique_hash)`.
  *
- * Import policy: on `(user_id, unique_hash)` conflict, SKIP the row and
- * increment statement_imports.rows_skipped — never silently upsert/update.
+ * Import policy: on `(user_id, unique_hash)` conflict, do not insert a second
+ * row. Reimport may patch safe fields (credit_card_id, alias description/
+ * category) and count those as rows_updated; untouched duplicates still
+ * increment statement_imports.rows_skipped.
  */
 final class TransactionHasher
 {

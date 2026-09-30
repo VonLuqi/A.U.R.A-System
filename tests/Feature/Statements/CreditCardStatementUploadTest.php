@@ -230,6 +230,44 @@ class CreditCardStatementUploadTest extends TestCase
         $this->assertFalse((new NubankCsvParser)->supports('csv_credit_card', 'nubank_credit'));
     }
 
+    public function test_reupload_credit_card_csv_links_existing_rows(): void
+    {
+        $user = User::factory()->create();
+        $card = CreditCard::factory()->default()->create(['user_id' => $user->id]);
+
+        // First import without an owned default would still resolve; wipe card link after.
+        $this->actingAs($user)->postJson('/api/statements/upload', [
+            'file' => $this->uploadedCreditCardFixture(),
+            'source' => 'nubank_credit',
+            'credit_card_id' => $card->id,
+        ])->assertCreated();
+
+        Transaction::query()->where('user_id', $user->id)->update(['credit_card_id' => null]);
+        $this->assertSame(
+            0,
+            Transaction::query()->where('user_id', $user->id)->whereNotNull('credit_card_id')->count(),
+        );
+
+        $response = $this->actingAs($user)->postJson('/api/statements/upload', [
+            'file' => $this->uploadedCreditCardFixture(),
+            'source' => 'nubank_credit',
+            'credit_card_id' => $card->id,
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.rows_imported', 0)
+            ->assertJsonPath('data.rows_updated', 7);
+
+        $this->assertSame(
+            7,
+            Transaction::query()
+                ->where('user_id', $user->id)
+                ->where('credit_card_id', $card->id)
+                ->count(),
+        );
+        $this->assertSame(7, Transaction::query()->where('user_id', $user->id)->count());
+    }
+
     public function test_forcing_checking_kind_on_credit_card_csv_returns_clear_422(): void
     {
         $user = User::factory()->create();

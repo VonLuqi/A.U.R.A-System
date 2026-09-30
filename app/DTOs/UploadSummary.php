@@ -29,6 +29,7 @@ final readonly class UploadSummary
         public int $rowsSkipped,
         public array $rowErrors,
         public string $checksum,
+        public int $rowsUpdated = 0,
     ) {
         if ($this->importId < 1) {
             throw new InvalidArgumentException('importId must be >= 1.');
@@ -40,7 +41,7 @@ final readonly class UploadSummary
             );
         }
 
-        foreach (['rowsTotal', 'rowsImported', 'rowsSkipped'] as $counter) {
+        foreach (['rowsTotal', 'rowsImported', 'rowsSkipped', 'rowsUpdated'] as $counter) {
             if ($this->{$counter} < 0) {
                 throw new InvalidArgumentException("{$counter} must be >= 0.");
             }
@@ -56,8 +57,11 @@ final readonly class UploadSummary
     /**
      * @param  list<RowError>  $rowErrors
      */
-    public static function fromImport(StatementImport $import, array $rowErrors = []): self
-    {
+    public static function fromImport(
+        StatementImport $import,
+        array $rowErrors = [],
+        int $rowsUpdated = 0,
+    ): self {
         return new self(
             importId: (int) $import->id,
             status: (string) $import->status,
@@ -69,6 +73,7 @@ final readonly class UploadSummary
             rowsSkipped: (int) $import->rows_skipped,
             rowErrors: $rowErrors,
             checksum: (string) ($import->checksum ?? ''),
+            rowsUpdated: $rowsUpdated,
         );
     }
 
@@ -84,6 +89,7 @@ final readonly class UploadSummary
      *     checksum: string,
      *     rows_total: int,
      *     rows_imported: int,
+     *     rows_updated: int,
      *     rows_skipped: int,
      *     row_errors_count: int,
      *     row_errors: list<RowError>
@@ -102,6 +108,7 @@ final readonly class UploadSummary
             'checksum' => $this->checksum,
             'rows_total' => $this->rowsTotal,
             'rows_imported' => $this->rowsImported,
+            'rows_updated' => $this->rowsUpdated,
             'rows_skipped' => $this->rowsSkipped,
             'row_errors_count' => count($this->rowErrors),
             'row_errors' => array_values($truncated),

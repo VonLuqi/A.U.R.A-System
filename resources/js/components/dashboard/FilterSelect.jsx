@@ -144,7 +144,7 @@ export default function FilterSelect({
                           id={popoverId}
                           role="listbox"
                           aria-label={ariaLabel}
-                          className="fixed z-50 overflow-hidden rounded-xl border border-border bg-surface shadow-lg"
+                          className="fixed z-[110] overflow-hidden rounded-xl border border-border bg-surface shadow-lg"
                           style={{
                               top: anchor.top,
                               left: anchor.left,

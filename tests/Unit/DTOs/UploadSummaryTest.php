@@ -63,6 +63,7 @@ class UploadSummaryTest extends TestCase
 
         $this->assertSame($import->id, $summary->importId);
         $this->assertSame(8, $summary->toArray()['rows_imported']);
+        $this->assertSame(0, $summary->toArray()['rows_updated']);
         $this->assertSame(1, $summary->toArray()['row_errors_count']);
     }
 

@@ -21,6 +21,7 @@
  *   rows_total?: number,
  *   rows_imported?: number,
  *   rows_skipped?: number,
+ *   rows_updated?: number,
  *   rows_failed?: number,
  *   period_start?: string|null,
  *   period_end?: string|null,
