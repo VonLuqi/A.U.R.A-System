@@ -1,10 +1,11 @@
 import { useEffect, useId, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cx } from '../../lib/cx';
 
 /**
  * Modal — superfície de interação (PLAN_EXPANSAO §8.2).
- * Sem card decorativo; scrim + painel com tokens Aura.
+ * Portal em `document.body` — evita containing block de header sticky/backdrop-blur.
  *
  * @param {{
  *   open: boolean,
@@ -13,8 +14,9 @@ import { cx } from '../../lib/cx';
  *   onClose: () => void,
  *   children: import('react').ReactNode,
  *   footer?: import('react').ReactNode,
- *   size?: 'md'|'sm',
+ *   size?: 'md'|'sm'|'lg',
  *   closeOnScrim?: boolean,
+ *   bodyScroll?: boolean,
  *   initialFocusRef?: import('react').RefObject<HTMLElement|null>,
  * }} props
  */
@@ -27,12 +29,15 @@ export default function Modal({
     footer = null,
     size = 'md',
     closeOnScrim = true,
+    bodyScroll = true,
     initialFocusRef,
 }) {
     const titleId = useId();
     const descriptionId = useId();
     const panelRef = useRef(null);
     const previouslyFocused = useRef(null);
+    const onCloseRef = useRef(onClose);
+    onCloseRef.current = onClose;
 
     useEffect(() => {
         if (!open) {
@@ -48,7 +53,7 @@ export default function Modal({
             );
 
         if (focusTarget && typeof focusTarget.focus === 'function') {
-            focusTarget.focus();
+            focusTarget.focus({ preventScroll: true });
         }
 
         const previousOverflow = document.body.style.overflow;
@@ -57,7 +62,7 @@ export default function Modal({
         function onKeyDown(event) {
             if (event.key === 'Escape') {
                 event.preventDefault();
-                onClose();
+                onCloseRef.current();
             }
         }
 
@@ -70,17 +75,22 @@ export default function Modal({
                 previouslyFocused.current &&
                 typeof previouslyFocused.current.focus === 'function'
             ) {
-                previouslyFocused.current.focus();
+                previouslyFocused.current.focus({ preventScroll: true });
             }
         };
-    }, [open, onClose, initialFocusRef]);
+        // Only on open: unstable onClose (inline) must not re-steal focus while typing.
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
+    }, [open]);
 
-    if (!open) {
+    if (!open || typeof document === 'undefined') {
         return null;
     }
 
-    return (
-        <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-6">
+    return createPortal(
+        <div
+            className="fixed inset-0 z-[100] grid place-items-center p-4 sm:p-6"
+            role="presentation"
+        >
             <button
                 type="button"
                 className="absolute inset-0 bg-overlay-scrim"
@@ -99,8 +109,8 @@ export default function Modal({
                 aria-describedby={description ? descriptionId : undefined}
                 className={cx(
                     'relative z-10 flex max-h-[min(90dvh,40rem)] w-full flex-col overflow-hidden',
-                    'rounded-t-2xl border border-border bg-surface shadow-none sm:rounded-2xl',
-                    size === 'sm' ? 'sm:max-w-md' : 'sm:max-w-lg',
+                    'rounded-2xl border border-border bg-surface shadow-none',
+                    size === 'sm' ? 'max-w-md' : size === 'lg' ? 'max-w-2xl' : 'max-w-lg',
                 )}
             >
                 <header className="flex shrink-0 items-start justify-between gap-3 border-b border-border-subtle px-5 py-4 sm:px-6">
@@ -127,7 +137,14 @@ export default function Modal({
                     </button>
                 </header>
 
-                <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-6">
+                <div
+                    className={cx(
+                        'min-h-0 flex-1 px-5 py-4 sm:px-6',
+                        bodyScroll
+                            ? 'overflow-y-auto'
+                            : 'flex flex-col overflow-hidden',
+                    )}
+                >
                     {children}
                 </div>
 
@@ -137,6 +154,7 @@ export default function Modal({
                     </footer>
                 ) : null}
             </div>
-        </div>
+        </div>,
+        document.body,
     );
 }

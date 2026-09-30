@@ -4,7 +4,9 @@
 > *Aura: Inteligência invisível, controle absoluto.*  
 > Mapa de execução (**Laravel 11 + React 19 + Vite 6** · HostGator · `aura.vonluqi.com`).  
 > Fonte de contexto: `docs/context.md` · Design: `docs/DESIGN-SYSTEM.MD` · Setup: `README.md`.  
-> Expansão pós-MVP: `docs/PLAN_EXPANSAO.md`.
+> Expansão pós-MVP: `docs/PLAN_EXPANSAO.md`.  
+> Expansão Etapa H: `docs/PLAN_CARTOES_EMPRESTIMOS.md`.  
+> Expansão Etapa I: `docs/PLAN_PERFIL_BRANDING.md`.
 
 **Status do produto**
 
@@ -17,6 +19,8 @@
 | **E** | Deploy HostGator | Concluída — `docs/PLAN_ETAPA_E.md` · `docs/DEPLOY_HOSTGATOR.md` |
 | **F** | Multi-usuário, Metas e CRUD Avançado | Concluída (DoD §9.2) — `docs/PLAN_EXPANSAO.md` |
 | **G** | Hardening, Cotas e Deploy da Expansão | Concluída (runbook §9.3) — cutover live = operador |
+| **H** | Cartões, Empréstimos e Notificações | Concluída (DoD §7) — cutover live = operador — `docs/PLAN_CARTOES_EMPRESTIMOS.md` |
+| **I** | Perfil, Branding e UX (Aura) | Pendente — `docs/PLAN_PERFIL_BRANDING.md` |
 
 ---
 
@@ -31,6 +35,11 @@
 - [x] Documentar variáveis de ambiente necessárias neste `context.md` se mudarem.
 - [x] **(Pós-MVP / Etapa F)** Atualizar `.env.example` e `.env.production.example` com flags de cotas (`AURA_LIMIT_*`).
 - [x] **(Pós-MVP / Etapa F)** Atualizar `docs/context.md`: escopo multi-usuário RBAC, limites e contratos (`config/aura.php`).
+- [x] **(Etapa H)** Atualizar `.env.example` / `.env.production.example` com `AURA_FEATURE_CREDIT_CARDS`, `AURA_FEATURE_LOANS`, `AURA_FEATURE_NOTIFICATIONS` e janelas de alerta (`AURA_NOTIFY_*_DAYS`).
+- [x] **(Etapa H)** Atualizar `docs/context.md`: cartões, empréstimos/cobranças, notificações in-app/e-mail e scheduler.
+- [x] **(Etapa I)** Atualizar `docs/context.md`: perfil editável (nome/senha), `avatar_path`, URL pública de avatar e identidade visual (logo SVG + loading Aura).
+- [x] **(Etapa I)** Atualizar `docs/DESIGN-SYSTEM.MD`: logo SVG canônica, tokens de glow/aura e estados de loading premium.
+- [x] **(Etapa I)** Documentar em `docs/DEPLOY_HOSTGATOR.md` o `storage:link` **somente** para disk `public` (avatars) — extratos continuam privados, sem link para `statements`.
 
 ---
 
@@ -52,6 +61,20 @@
 - [x] Colunas de origem manual vs. importada em `transactions` (`source_kind`: `import|manual`, `statement_import_id` nullable).
 - [x] Extender `statement_imports.format` / `source` para faturas de cartão (`csv_credit_card`, `nubank_credit`, etc.).
 - [x] Seeders: papéis Admin / Subadmin / Visitante / Teste + limites default (`RoleLimitsSeeder` + `AdminUserSeeder` + `DemoRoleUsersSeeder` local).
+
+### B++ — Extensões de schema (Etapa H)
+
+- [x] Migration `credit_cards` (cadastro de cartões por `user_id`: nome, limite, dia de fechamento, dia de vencimento).
+- [x] Migration `loans` (empréstimos a terceiros: devedor, valor, data de cobrança, status, kind cash|card_limit).
+- [x] Migration: `transactions.credit_card_id` e `transactions.loan_id` (FKs nullable).
+- [x] Migration nativa Laravel `notifications` (`php artisan notifications:table`).
+- [x] Factories/seeders de desenvolvimento para cartões e empréstimos.
+
+### B+++ — Extensões de schema (Etapa I)
+
+- [x] Migration: `users.avatar_path` string nullable (path relativo no disk `public`, ex.: `avatars/{user_id}/{uuid}.webp`).
+- [x] Sem backfill obrigatório (default `null` = fallback visual de iniciais / BrandMark).
+- [x] Factory `UserFactory`: estado opcional `withAvatar()` para testes de upload/remoção.
 
 ---
 
@@ -82,6 +105,24 @@
 - [x] Cap de date range por papel nos FormRequests (`WithinRoleDateRangeLimit` / §2.4); presets flexíveis completos na §6.
 - [x] Adaptar `DashboardAnalyticsRequest` / `IndexTransactionsRequest` para presets (`preset=…`) e date range livre completo (§6.1); contrato URL/JSDoc na §6.2 ✔.
 
+### C++ — APIs e domínio (Etapa H)
+
+- [x] Abilities `credit_cards.manage`, `loans.manage`, `notifications.read` em `config/aura.php` + Gates.
+- [x] CRUD `/api/credit-cards` + `CreditCardPolicy` + FormRequests.
+- [x] CRUD `/api/loans` (+ mark-paid / status) + `LoanPolicy` + FormRequests.
+- [x] Extender store/update de transações para aceitar `credit_card_id` e `loan_id` (ownership check).
+- [x] Notifications Laravel (database + mail) + endpoints `/api/notifications`.
+- [x] Command `aura:check-due-dates` + schedule diário em `routes/console.php`.
+
+### C+++ — APIs e domínio (Etapa I)
+
+- [x] `ProfileController` (`php artisan make:controller ProfileController`) — self-service do usuário autenticado (não confundir com `UserController` admin).
+- [x] Rotas autenticadas: `PATCH /api/profile`, `POST /api/profile/avatar`, `DELETE /api/profile/avatar` (+ throttle).
+- [x] FormRequests: `UpdateProfileRequest`, `UploadAvatarRequest`.
+- [x] Upload seguro no disk `public` sob `avatars/{user_id}/`; validar mime (`jpeg|png|webp`), tamanho máx. e apagar arquivo antigo ao substituir/remover.
+- [x] Extender `AuthUserResource` com `avatar_url` (URL pública via `Storage::disk('public')->url(...)` ou `null`).
+- [x] Extender `User` model: `avatar_path` fillable + accessor/helper `avatarUrl()`.
+
 ---
 
 ## Etapa D — Frontend (MVP)
@@ -106,6 +147,21 @@
 - [x] UI de Apelidos/Regras (lista + criar a partir de lançamento).
 - [x] Guards de UI por papel (`can` / hide actions para Visitante/Teste conforme limites).
 
+### D++ — UI (Etapa H)
+
+- [x] Aba **Cartões** (`/cards`) — CRUD de cartões cadastrados.
+- [x] Aba **Empréstimos / Cobranças** (`/loans`) — CRUD + status de pagamento.
+- [x] `TransactionFormModal`: vínculo “feito no cartão X” e/ou “para a pessoa Y” (loan).
+- [x] Sino de notificações no `TopNav` (lista in-app + marcar lida).
+- [x] Entradas em `NAV_CATALOG` + `AbilityRoute` + feature flags no `AuthUserResource`.
+
+### D+++ — UI (Etapa I)
+
+- [x] Página/modal **Conta / Perfil** (`/account` ou modal a partir do `TopNav`): editar nome, alterar senha, upload/remoção de avatar.
+- [x] API client `resources/js/api/profile.js` + atualização imediata do `AuthContext` (`setUser` / `refreshUser`) após PATCH/upload.
+- [x] Substituir o ponto `bg-brand` do `BrandMark` por logo SVG inline “aura abstrata” (`#DCCFFF` sobre `#151716`).
+- [x] Loading global “Aura / Instinto Superior”: componente `AuraLoader` + keyframes Tailwind (pulse, glow multicamadas) no splash de sessão e rotas protegidas.
+
 ---
 
 ## Etapa E — Deploy (HostGator / aura.vonluqi.com)
@@ -122,6 +178,12 @@
 - [x] Configurar cron cPanel: `* * * * * php …/artisan schedule:run` (purge de extratos).
 - [x] Validar HTTPS, login, upload Nubank e dashboard em produção.
 - [x] Backup inicial do banco e checklist de rollback.
+- [x] **(Etapa H)** Confirmar cron `schedule:run` lista `aura:check-due-dates` além de `statements:purge-files` — agendado em `routes/console.php`; validação pós-deploy em `DEPLOY_HOSTGATOR.md` §5.7 / §6.3.
+- [x] **(Etapa H)** Configurar `MAIL_*` em produção se canal e-mail de notificações estiver ativo — default `MAIL_MAILER=log` (`.env.production.example`); SMTP só se e-mail real for desejado (§5.7).
+- [x] **(Etapa I)** Backup MySQL antes da migration `avatar_path` — runbook `DEPLOY_HOSTGATOR.md` §5.8.
+- [x] **(Etapa I)** `php artisan migrate --force` + `php artisan storage:link` (symlink `public/storage` → `storage/app/public`) — **não** expor disk `statements` — §5.8 + CI deploy/migrate.
+- [x] **(Etapa I)** Validar `GET https://aura.vonluqi.com/storage/avatars/...` após upload de avatar em produção — checklist smoke §5.8 (cutover live pós-merge).
+- [x] **(Etapa I)** Smoke: editar nome, trocar senha, upload/remoção de avatar, splash com `AuraLoader`, logo SVG no Login e TopNav — §5.8.
 
 ---
 
@@ -159,6 +221,9 @@
 | **Visitante** | Leitura + cotas baixas de upload/CRUD; sem gestão de usuários. |
 | **Teste** | Ambiente limitado (cotas agressivas, dados isolados); ideal para demos/QA. |
 
+> **Etapa H:** Admin/Subadmin/Visitante/Teste recebem `credit_cards.manage` e `loans.manage` (com cotas Visitante/Teste se definidas); `notifications.read` para todos autenticados ativos.  
+> **Etapa I:** qualquer usuário autenticado ativo edita **o próprio** perfil (nome, senha, avatar); e-mail permanece imutável via self-service (alteração só via Admin se necessário).
+
 ---
 
 ## Etapa G — Hardening, Cotas e Deploy da Expansão
@@ -174,8 +239,78 @@
 
 ---
 
+## Etapa H — Cartões, Empréstimos e Notificações
+
+> Plano hiperdetalhado: `docs/PLAN_CARTOES_EMPRESTIMOS.md`.  
+> Objetivo: cadastrar cartões de crédito, vincular despesas a faturas/cartões, controlar empréstimos a terceiros (dinheiro ou limite do cartão) e alertar vencimentos/cobranças via notificações in-app e e-mail.  
+> Pré-requisito: Etapas A–G concluídas (multi-tenant + cron HostGator ativos).
+
+### Pilares de produto
+
+| # | Pilar | Camadas |
+| --- | --- | --- |
+| 1 | Gestão de Cartões de Crédito | `credit_cards` + CRUD API + aba Cartões |
+| 2 | Vínculo de Faturas / Transações | `transactions.credit_card_id` (+ UI no modal) |
+| 3 | Empréstimos / Cobranças | `loans` + `transactions.loan_id` + aba Cobranças |
+| 4 | Sistema de Notificações | `notifications` + `aura:check-due-dates` + sino no Shell |
+
+### Distinção importante
+
+- **Parser CSV de fatura** (Etapa F §5) importa lançamentos de extrato Nubank crédito — **não** substitui o cadastro de cartões.
+- **Cadastro de cartões** (Etapa H) é entidade de domínio (limite, fechamento, vencimento) à qual transações podem ser associadas.
+- **Metas `debt_payoff`** (Etapa F) = amortização de dívida própria; **Empréstimos** (Etapa H) = valores a cobrar de terceiros.
+
+### Checklist macro
+
+- [x] Atualizar `docs/context.md` + env examples + `config/aura.php` (abilities, features, notify windows) — §0 do plano H.
+- [x] Migrations: `credit_cards`, `loans`, FKs em `transactions`, tabela `notifications`.
+- [x] Backend: Models, Policies, Controllers, Services, Notifications, Command + schedule.
+- [x] Frontend: páginas Cartões e Empréstimos, vínculo no modal de transação, NotificationBell.
+- [x] Testes Feature/Unit (isolamento `user_id`, due-date command, mark-paid, unread).
+- [x] Deploy: migrate + flags + validar `schedule:list` com `aura:check-due-dates` — runbook `DEPLOY_HOSTGATOR.md` §5.7 (cutover live pós-merge).
+
+---
+
+## Etapa I — Perfil, Branding e UX (Aura)
+
+> Plano hiperdetalhado: `docs/PLAN_PERFIL_BRANDING.md`.  
+> Objetivo: personalização de conta (perfil + avatar), identidade visual definitiva (logo SVG) e loading premium alinhado à tagline *Inteligência invisível, controle absoluto.*  
+> Pré-requisito: Etapas A–H concluídas (auth session, `AuthUserResource`, Design System dark, deploy HostGator documentado).
+
+### Pilares de produto
+
+| # | Pilar | Camadas |
+| --- | --- | --- |
+| 1 | Gestão de Perfil | `users.avatar_path` + `ProfileController` + página/modal Conta |
+| 2 | Nova Logo (SVG) | `BrandMark` SVG inline + Design System + Login / Splash / Nav |
+| 3 | Loading State Avançado | `AuraLoader` + keyframes Tailwind (glow `#DCCFFF`) |
+
+### Distinção importante
+
+- **`UserController` (Admin)** gerencia outros usuários (papel, cotas, ativar/desativar) — **não** é o fluxo de “minha conta”.
+- **`ProfileController` (self-service)** edita apenas o `auth()->user()`: nome, senha e avatar.
+- **Disk `public` + `storage:link`** serve avatars em `/storage/...`.  
+  **Disk `statements`** permanece privado (`serve=false`) — **nunca** usar `storage:link` para expor extratos.
+- **Logo SVG** substitui o círculo sólido atual do `BrandMark`; tipografia wordmark e tagline permanecem conforme `docs/DESIGN-SYSTEM.MD`.
+- **AuraLoader** eleva o splash/spinner atual (`AuthSplash`, `ProtectedRoute`) a uma animação de energia/aura premium — sem estética cartoon.
+
+### Checklist macro
+
+- [x] Atualizar `docs/context.md` + `DESIGN-SYSTEM.MD` + `DEPLOY_HOSTGATOR.md` (avatar público vs statements privados).
+- [x] Migration `users.avatar_path` + Model/Factory.
+- [x] Backend: `ProfileController`, FormRequests, rotas `/api/profile*`, `AuthUserResource.avatar_url`.
+- [x] Frontend: API profile, UI Conta/Perfil, sync `AuthContext`, avatar no `TopNav`.
+- [x] Logo SVG no `BrandMark` (+ Login / AbilityRoute / AuthSplash).
+- [x] `AuraLoader` + keyframes em `tailwind.config.js` / CSS tokens.
+- [x] Testes Feature (update profile, upload/delete avatar, validação mime/size) + smoke visual.
+- [x] Deploy HostGator: backup → migrate → `storage:link` → smoke avatar URL — runbook §5.8; **cutover live** = merge `main` + CI.
+
+---
+
 ## Ordem Sugerida de Entrega
 
-> **A–E (MVP)** ✅ → **F.DB (B+)** → **F.RBAC/Cotas** → **F.CRUD Manual** → **F.Aliases** → **F.CC Parser** → **F.Date Range** → **F.Metas** → **F.Admin UI** → **G (Deploy/Hardening)**
+> **A–E (MVP)** ✅ → **F** (expansão multi-user) ✅ → **G** (hardening) ✅ → **H** (cartões / empréstimos / notificações) ✅ → **I.DB** → **I.Profile API** → **I.Profile UI** → **I.Logo SVG** → **I.AuraLoader** → **I.Deploy**
 
-Detalhamento técnico exclusivo da expansão: **`docs/PLAN_EXPANSAO.md`**.
+Detalhamento técnico da expansão F–G: **`docs/PLAN_EXPANSAO.md`**.  
+Detalhamento técnico exclusivo da Etapa H: **`docs/PLAN_CARTOES_EMPRESTIMOS.md`**.  
+Detalhamento técnico exclusivo da Etapa I: **`docs/PLAN_PERFIL_BRANDING.md`**.

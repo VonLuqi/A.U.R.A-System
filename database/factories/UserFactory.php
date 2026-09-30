@@ -27,6 +27,7 @@ class UserFactory extends Factory
         return [
             'name' => fake()->name(),
             'email' => fake()->unique()->safeEmail(),
+            'avatar_path' => null,
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
             'remember_token' => Str::random(10),
@@ -36,6 +37,16 @@ class UserFactory extends Factory
             'manual_transactions_used' => 0,
             'quota_period_starts_at' => null,
         ];
+    }
+
+    /**
+     * Path stub for avatar URL tests (pair with Storage::fake('public') when asserting files).
+     */
+    public function withAvatar(string $path = 'avatars/1/fake.webp'): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'avatar_path' => $path,
+        ]);
     }
 
     /**

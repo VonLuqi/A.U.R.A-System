@@ -12,7 +12,64 @@
 | Sigla (uso raro / docs) | A.U.R.A. — não poluir a UI com a expansão; reservar para About / docs |
 | Tagline | *Aura: Inteligência invisível, controle absoluto.* — `text.caption` ou `text.body`, `color.text.secondary`, weight `400` |
 | Login / Figma (1º viewport) | Wordmark hero + tagline de apoio + formulário; sem competir com outros headlines |
-| Ícone de marca | Accent `#DCCFFF` + wordmark claro sobre fundo `#151716` |
+| Ícone de marca (legado) | ~~Círculo sólido `bg-brand`~~ — **substituído** pelo SVG §0.1 (não reintroduzir) |
+| Logo SVG (Etapa I) | Mark vetorial “aura abstrata” inline no `BrandMark` — **canônico** · ver §0.1 |
+| Loading global (Etapa I) | `AuraLoader` — glow multicamadas premium — ver §0.2 |
+
+### 0.1 Logo SVG canônica (Etapa I) — **implementado**
+
+> **Fonte de verdade de código:** `resources/js/components/ui/BrandMark.jsx` + tokens `resources/js/lib/brand.js` (`BRAND_MARK`).  
+> Spec: `PLAN_PERFIL_BRANDING.md` §4. Wordmark tipográfico permanece ao lado (não path de texto no SVG).  
+> **Proibido** regressar ao `<span className="rounded-full bg-brand" />`.
+
+| Token / atributo | Valor |
+| --- | --- |
+| Componente | `BrandMark` (`size`: `sm` \| `lg`; `animated?: boolean`) |
+| Conceito | “Aura” abstrata: anéis/elipses concêntricas suaves → energia invisível (**não** personagem, **não** literal) |
+| `viewBox` | `0 0 32 32` (`BRAND_MARK.viewBox`) |
+| Fill / stroke | `#DCCFFF` (`BRAND_MARK.color` = `color.brand.primary`) |
+| Canvas de contraste | `#151716` (`color.bg.default`) — fundo da UI; SVG com fill transparente + strokes brand |
+| Opacidade | Núcleo `1`; anel interno `0.85`; anel externo `0.45`; halo elipse `0.28` (`BRAND_MARK.opacity`) |
+| Tamanho `sm` (nav / TopNav) | `h-5 w-5` — estático (`animated={false}`) |
+| Tamanho `lg` (Login / splash / guards) | `h-10 w-10` — Login/splash usam `animated` → classe `animate-aura-breathe` (§5) |
+| Wordmark | **Fora** do SVG — Poppins Bold `text-ink` ao lado do mark |
+| Tagline | **Fora** do SVG — *Inteligência invisível, controle absoluto.* só na Login / docs |
+| A11y | `aria-hidden` + `focusable="false"` no SVG; nome da marca no wordmark texto |
+
+**Não fazer:** path de texto “Aura” no SVG; embutir tagline; cores fora de `#DCCFFF` / transparências derivadas; estética cartoon; círculo sólido `bg-brand` como mark.
+
+Estrutura canônica (espelha o JSX):
+
+```svg
+<svg viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+  <circle cx="16" cy="16" r="3.5" fill="#DCCFFF" />
+  <circle cx="16" cy="16" r="7" fill="none" stroke="#DCCFFF" stroke-width="1.25" opacity="0.85" />
+  <circle cx="16" cy="16" r="11" fill="none" stroke="#DCCFFF" stroke-width="1" opacity="0.45" />
+  <ellipse cx="16" cy="16" rx="14.5" ry="12" fill="none" stroke="#DCCFFF" stroke-width="0.75" opacity="0.28" transform="rotate(-18 16 16)" />
+</svg>
+```
+
+### 0.2 Loading Aura / Instinto Superior (Etapa I)
+
+> Mood: energia concentrada, brilho controlado, presença “superior”. **Não** cartoon, **não** partículas excessivas, **não** cores fora da paleta Aura.
+
+| Token / atributo | Valor |
+| --- | --- |
+| Componente | `resources/js/components/ui/AuraLoader.jsx` |
+| Uso | `AuthSplash`, `ProtectedRoute` (loading global); **não** substituir `Spinner` de botões/tabelas |
+| Cor de glow | `#DCCFFF` → `rgba(220, 207, 255, α)` em camadas |
+| Fundo | `bg-canvas` / `#151716` |
+| Camadas | ≤3 animadas: halo (`aura-pulse`) + núcleo (`aura-glow`) + mark (`aura-breathe`); ring estático |
+| Keyframes Tailwind | `aura-pulse`, `aura-glow`, `aura-breathe` em `tailwind.config.js` (`theme.extend`) → classes `animate-aura-*` |
+| CSS complemento | `resources/css/aura-loader.css` — `.aura-glow-core` / `.aura-glow-halo` + `prefers-reduced-motion` |
+| Timing | ~2.0–2.6s `ease-in-out` infinite — pulse/glow perceptíveis; keyframes em `aura-loader.css` |
+| Motion | Só `transform` / `opacity` / `box-shadow`; keyframes canônicos no CSS (não só Tailwind JIT) |
+| `prefers-reduced-motion: reduce` | Opacity estática; desligar pulse/glow agressivo |
+| A11y | `role="status"`, `aria-label` / `sr-only` (“Carregando”) |
+
+Anti-padrões (rejeitar em review): bounce exagerado, neon extra, emojis, confete, cópia literal de UI de anime.
+
+---
 
 ## 1. Paleta de Cores (Color Tokens)
 

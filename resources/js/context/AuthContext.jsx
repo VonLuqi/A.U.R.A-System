@@ -3,14 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import * as authApi from '../api/auth';
 import { setUnauthorizedHandler } from '../api/client';
-import BrandMark from '../components/ui/BrandMark';
-import Spinner from '../components/ui/Spinner';
+import AuraLoader from '../components/ui/AuraLoader';
 
 /**
- * AuthContext (Etapa D §1.2.1 / PLAN_EXPANSAO §8.1) — sessão SPA.
- * Contrato: `{ user, status, login, logout, refreshUser }`
- * `user` = AuthUser (`role`, `limits`, `usage`, `abilities`) — ver `lib/auth.js`.
+ * AuthContext (Etapa D §1.2.1 / PLAN_EXPANSAO §8.1 · Etapa I §3.3 / §5.3) — sessão SPA.
+ * Contrato: `{ user, status, login, logout, refreshUser, applyUser }`
+ * `user` = AuthUser (`role`, `limits`, `usage`, `abilities`, `avatar_url`) — ver `lib/auth.js`.
  * status: `idle` | `loading` | `ready` (mount usa `loading` → `ready`).
+ *
+ * Pós-mutação de perfil (§3.3): API → `applyUser(user)` imediato → toast (no mutation hook).
+ * `refreshUser()` só se a resposta não trouxer o resource completo.
  *
  * Segurança client (§5.6):
  * - Sessão só em cookie HttpOnly (sem localStorage/sessionStorage).
@@ -19,12 +21,13 @@ import Spinner from '../components/ui/Spinner';
 
 const AuthContext = createContext(null);
 
+/** Tempo mínimo do splash para o pulse/glow ser perceptível (~½ ciclo). */
+const SPLASH_MIN_MS = 1100;
+
 function AuthSplash() {
     return (
-        <div className="flex min-h-dvh flex-col items-center justify-center gap-6 bg-canvas">
-            <BrandMark size="lg" />
-            <Spinner size="lg" />
-            <span className="sr-only">Carregando sessão</span>
+        <div className="flex min-h-dvh flex-col items-center justify-center bg-canvas">
+            <AuraLoader size="lg" label="Carregando sessão" />
         </div>
     );
 }
@@ -37,23 +40,31 @@ export function AuthProvider({ children }) {
 
     useEffect(() => {
         let cancelled = false;
+        const startedAt = performance.now();
 
         (async () => {
             setStatus('loading');
 
+            let nextUser = null;
+
             try {
                 await authApi.ensureCsrf();
-                const current = await authApi.fetchUser();
-
-                if (!cancelled) {
-                    setUser(current);
-                    setStatus('ready');
-                }
+                nextUser = await authApi.fetchUser();
             } catch {
-                if (!cancelled) {
-                    setUser(null);
-                    setStatus('ready');
-                }
+                nextUser = null;
+            }
+
+            const remaining = SPLASH_MIN_MS - (performance.now() - startedAt);
+
+            if (remaining > 0) {
+                await new Promise((resolve) => {
+                    window.setTimeout(resolve, remaining);
+                });
+            }
+
+            if (!cancelled) {
+                setUser(nextUser);
+                setStatus('ready');
             }
         })();
 
@@ -100,6 +111,16 @@ export function AuthProvider({ children }) {
         return current;
     }, []);
 
+    /**
+     * Atualiza o user no context sem refetch (Etapa I §3.3).
+     * Usar após PATCH/POST/DELETE de perfil com o `user` retornado pela API.
+     *
+     * @param {import('../lib/auth').AuthUser|null} nextUser
+     */
+    const applyUser = useCallback((nextUser) => {
+        setUser(nextUser);
+    }, []);
+
     const value = useMemo(
         () => ({
             user,
@@ -107,8 +128,9 @@ export function AuthProvider({ children }) {
             login,
             logout,
             refreshUser,
+            applyUser,
         }),
-        [user, status, login, logout, refreshUser],
+        [user, status, login, logout, refreshUser, applyUser],
     );
 
     return (

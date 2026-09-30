@@ -168,9 +168,12 @@ jobs:
           command -v ea-php82 >/dev/null 2>&1 && PHP_BIN=ea-php82
           [ -x /opt/cpanel/ea-php82/root/usr/bin/php ] && PHP_BIN=/opt/cpanel/ea-php82/root/usr/bin/php
           $PHP_BIN artisan --version
+          mkdir -p storage/app/public/avatars
           $PHP_BIN artisan migrate --force
           $PHP_BIN artisan aura:backfill-transaction-user-id || true
           $PHP_BIN artisan db:seed --class=Database\\Seeders\\RoleLimitsSeeder --force
+          # Etapa I §5.8 — avatars disk public (não expõe statements)
+          $PHP_BIN artisan storage:link 2>/dev/null || echo "storage:link skipped (já existe ou hosting bloqueia — ver DEPLOY §5.8)"
           $PHP_BIN artisan config:cache
           $PHP_BIN artisan route:cache || true
           $PHP_BIN artisan view:cache || true
@@ -296,6 +299,15 @@ jobs:
                   '--force' => true,
               ]);
               echo Illuminate\\Support\\Facades\\Artisan::output();
+
+              @mkdir($root . '/storage/app/public/avatars', 0775, true);
+              try {
+                  Illuminate\\Support\\Facades\\Artisan::call('storage:link');
+                  echo Illuminate\\Support\\Facades\\Artisan::output();
+                  echo "storage:link OK\\n";
+              } catch (Throwable $e) {
+                  echo "storage:link skipped: " . $e->getMessage() . "\\n";
+              }
 
               Illuminate\\Support\\Facades\\Artisan::call('config:cache');
               echo "config:cache OK\\n";

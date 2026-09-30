@@ -18,7 +18,7 @@ export default function LoginPage() {
 
             <div className="relative z-10 flex w-full max-w-md flex-col items-center gap-8">
                 <header className="flex flex-col items-center gap-3 text-center">
-                    <BrandMark size="lg" />
+                    <BrandMark size="lg" animated />
                     <p className="max-w-sm text-caption font-normal text-ink-secondary">
                         Inteligência invisível, controle absoluto.
                     </p>
