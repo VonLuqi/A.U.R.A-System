@@ -163,4 +163,60 @@ class LinkDebtorTransactionsTest extends TestCase
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['transaction_ids']);
     }
+
+    public function test_debtors_index_expands_shared_loans_into_one_per_transaction(): void
+    {
+        $user = User::factory()->admin()->create();
+        $debtor = Debtor::factory()->create(['user_id' => $user->id, 'name' => 'Mateus']);
+
+        $shared = Loan::factory()->create([
+            'user_id' => $user->id,
+            'debtor_id' => $debtor->id,
+            'debtor_name' => 'Mateus',
+            'status' => 'open',
+            'amount' => '33.41',
+            'paid_amount' => '0.00',
+        ]);
+
+        $txA = Transaction::factory()->manual()->for($user)->create([
+            'occurred_on' => '2026-09-06',
+            'type' => 'debit',
+            'amount' => '33.41',
+            'description' => 'Shopee A',
+            'loan_id' => $shared->id,
+        ]);
+        $txB = Transaction::factory()->manual()->for($user)->create([
+            'occurred_on' => '2026-09-06',
+            'type' => 'debit',
+            'amount' => '55.87',
+            'description' => 'Pneu B',
+            'loan_id' => $shared->id,
+        ]);
+        $txC = Transaction::factory()->manual()->for($user)->create([
+            'occurred_on' => '2026-09-06',
+            'type' => 'debit',
+            'amount' => '51.83',
+            'description' => 'Shopee C',
+            'loan_id' => $shared->id,
+        ]);
+
+        $this->actingAs($user)
+            ->getJson('/api/debtors')
+            ->assertOk()
+            ->assertJsonPath('data.0.open_loans_count', 3)
+            ->assertJsonPath('data.0.open_remaining_total', '141.11');
+
+        $this->assertSame(3, Loan::query()->where('debtor_id', $debtor->id)->count());
+
+        $txA->refresh();
+        $txB->refresh();
+        $txC->refresh();
+        $this->assertNotSame((int) $txA->loan_id, (int) $txB->loan_id);
+        $this->assertNotSame((int) $txB->loan_id, (int) $txC->loan_id);
+
+        $this->actingAs($user)
+            ->getJson('/api/loans?debtor_id='.$debtor->id)
+            ->assertOk()
+            ->assertJsonPath('meta.total', 3);
+    }
 }

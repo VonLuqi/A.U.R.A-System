@@ -7,7 +7,9 @@ use App\Http\Requests\Loans\MarkLoanPaidRequest;
 use App\Http\Requests\Loans\StoreLoanRequest;
 use App\Http\Requests\Loans\UpdateLoanRequest;
 use App\Http\Resources\LoanResource;
+use App\Models\Debtor;
 use App\Models\Loan;
+use App\Services\DebtorService;
 use App\Services\LoanService;
 use App\Services\UsageLimitService;
 use Illuminate\Http\JsonResponse;
@@ -21,14 +23,27 @@ class LoanController extends Controller
     public function __construct(
         private readonly LoanService $loans,
         private readonly UsageLimitService $usageLimits,
+        private readonly DebtorService $debtors,
     ) {}
 
     public function index(IndexLoansRequest $request): JsonResponse
     {
         $this->authorize('viewAny', Loan::class);
 
+        $filters = $request->filters();
+        $debtorId = $filters['debtor_id'] ?? null;
+        if ($debtorId !== null) {
+            $debtor = Debtor::query()
+                ->forUser($request->user())
+                ->whereKey((int) $debtorId)
+                ->first();
+            if ($debtor !== null) {
+                $this->debtors->expandSharedLoans($request->user(), $debtor);
+            }
+        }
+
         $paginator = $this->loans
-            ->queryForUser($request->user(), $request->filters())
+            ->queryForUser($request->user(), $filters)
             ->paginate($request->perPage())
             ->withQueryString();
 

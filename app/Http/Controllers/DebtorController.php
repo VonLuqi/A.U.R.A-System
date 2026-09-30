@@ -25,6 +25,9 @@ class DebtorController extends Controller
     {
         $this->authorize('viewAny', Debtor::class);
 
+        // Repair old bulk-links that piled many saídas onto one loan.
+        $this->debtors->expandSharedLoansForUser($request->user());
+
         $paginator = $this->debtors
             ->queryForUser($request->user(), $request->filters())
             ->paginate($request->perPage())

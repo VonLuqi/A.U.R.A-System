@@ -198,6 +198,16 @@ export default function LoansPage() {
         }
     }, [debtors.data, selectedDebtor?.id]);
 
+    // After expand splits shared loans, refresh people counts once per debtor open.
+    useEffect(() => {
+        if (!selectedDebtor?.id || detailLoans.status !== 'success') {
+            return;
+        }
+        void refreshDebtors();
+        // Only when opening a debtor or when loan list total changes after expand.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedDebtor?.id, detailLoans.status, detailLoans.meta?.total]);
+
     const formOpen = formState !== null;
     const formMode = formState?.mode === 'edit' ? 'edit' : 'create';
     const formSubmitting =

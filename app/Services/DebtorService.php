@@ -343,6 +343,118 @@ final class DebtorService
         ];
     }
 
+    /**
+     * Repair loans that had multiple saídas piled onto one open loan (pre one-loan-per-tx).
+     * Keeps the first transaction on the original loan; creates a new loan for each extra.
+     *
+     * @return int Number of new loans created
+     */
+    public function expandSharedLoans(User $user, Debtor $debtor): int
+    {
+        $this->assertOwner($user, $debtor);
+
+        $created = 0;
+
+        $loans = Loan::query()
+            ->forUser($user)
+            ->where('debtor_id', $debtor->id)
+            ->whereIn('status', [LoanStatus::Open, LoanStatus::Partial])
+            ->with(['transactions' => function ($q): void {
+                $q->orderBy('id');
+            }])
+            ->orderBy('id')
+            ->get();
+
+        foreach ($loans as $loan) {
+            $txs = $loan->transactions;
+            if ($txs->isEmpty()) {
+                continue;
+            }
+
+            $first = $txs->first();
+            $this->syncLoanFromTransaction($loan, $first);
+
+            foreach ($txs->slice(1) as $tx) {
+                $newLoan = $this->createLoanFromTransaction($user, $debtor, [
+                    'amount' => $tx->amount,
+                    'occurred_on' => $tx->occurred_on?->format('Y-m-d') ?? (string) $tx->occurred_on,
+                    'credit_card_id' => $tx->credit_card_id,
+                    'description' => is_string($tx->description) ? $tx->description : null,
+                ]);
+
+                // Preserve card kind from original if create inferred cash with null card.
+                if ($loan->kind === LoanKind::CardLimit && $newLoan->credit_card_id === null && $loan->credit_card_id) {
+                    $newLoan->credit_card_id = $loan->credit_card_id;
+                    $newLoan->kind = LoanKind::CardLimit;
+                    $newLoan->save();
+                }
+
+                $tx->loan_id = $newLoan->id;
+                $tx->save();
+                $created++;
+            }
+        }
+
+        return $created;
+    }
+
+    /**
+     * Expand shared loans for every debtor owned by the user.
+     */
+    public function expandSharedLoansForUser(User $user): int
+    {
+        $created = 0;
+
+        $debtors = Debtor::query()
+            ->forUser($user)
+            ->orderBy('id')
+            ->get();
+
+        foreach ($debtors as $debtor) {
+            $created += $this->expandSharedLoans($user, $debtor);
+        }
+
+        return $created;
+    }
+
+    private function syncLoanFromTransaction(Loan $loan, Transaction $tx): void
+    {
+        $amount = number_format((float) $tx->amount, 2, '.', '');
+        $occurredOn = $tx->occurred_on?->format('Y-m-d') ?? (string) $tx->occurred_on;
+        $description = is_string($tx->description) && $tx->description !== ''
+            ? $tx->description
+            : null;
+
+        $dirty = false;
+
+        if ((string) $loan->amount !== $amount && (float) $loan->paid_amount <= 0) {
+            $loan->amount = $amount;
+            $dirty = true;
+        }
+
+        if ($occurredOn !== '' && (
+            $loan->lent_on?->format('Y-m-d') !== $occurredOn
+            || $loan->due_on?->format('Y-m-d') !== $occurredOn
+        )) {
+            $loan->lent_on = $occurredOn;
+            $loan->due_on = $occurredOn;
+            $dirty = true;
+        }
+
+        $notes = $description !== null
+            ? 'Criado ao vincular lançamento: '.$description
+            : $loan->notes;
+
+        if ($notes !== $loan->notes) {
+            $loan->notes = $notes;
+            $dirty = true;
+        }
+
+        if ($dirty) {
+            $loan->save();
+        }
+    }
+
     private function assertOwner(User $user, Debtor $debtor): void
     {
         if ((int) $debtor->user_id !== (int) $user->id) {
