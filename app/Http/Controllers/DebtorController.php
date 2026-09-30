@@ -8,6 +8,7 @@ use App\Http\Requests\Debtors\StoreDebtorRequest;
 use App\Http\Requests\Debtors\UpdateDebtorRequest;
 use App\Http\Resources\DebtorResource;
 use App\Models\Debtor;
+use App\Models\Loan;
 use App\Services\DebtorService;
 use Illuminate\Http\JsonResponse;
 
@@ -60,6 +61,14 @@ class DebtorController extends Controller
                 $q->whereIn('status', ['open', 'partial']);
             },
         ]);
+        $debtor->setAttribute(
+            'open_remaining_total',
+            Loan::query()
+                ->where('debtor_id', $debtor->id)
+                ->whereIn('status', ['open', 'partial'])
+                ->selectRaw('COALESCE(SUM(GREATEST(amount - paid_amount, 0)), 0) as total')
+                ->value('total') ?? 0,
+        );
 
         return response()->json([
             'data' => (new DebtorResource($debtor))->resolve(),

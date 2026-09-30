@@ -108,4 +108,34 @@ class DebtorCrudTest extends TestCase
         $this->assertSame((int) $loan->id, (int) $tx2->loan_id);
         $this->assertSame(1, Loan::query()->where('debtor_id', $debtor->id)->count());
     }
+
+    public function test_index_exposes_open_remaining_total(): void
+    {
+        $user = User::factory()->admin()->create();
+        $debtor = Debtor::factory()->create(['user_id' => $user->id, 'name' => 'Luca']);
+
+        Loan::factory()->create([
+            'user_id' => $user->id,
+            'debtor_id' => $debtor->id,
+            'debtor_name' => 'Luca',
+            'status' => 'open',
+            'amount' => '100.00',
+            'paid_amount' => '20.00',
+        ]);
+        Loan::factory()->create([
+            'user_id' => $user->id,
+            'debtor_id' => $debtor->id,
+            'debtor_name' => 'Luca',
+            'status' => 'paid',
+            'amount' => '50.00',
+            'paid_amount' => '50.00',
+        ]);
+
+        $this->actingAs($user)
+            ->getJson('/api/debtors')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $debtor->id)
+            ->assertJsonPath('data.0.open_loans_count', 1)
+            ->assertJsonPath('data.0.open_remaining_total', '80.00');
+    }
 }

@@ -29,6 +29,8 @@ class IndexLoansRequest extends FormRequest
             'due_to' => ['sometimes', 'nullable', 'date', 'date_format:Y-m-d', 'after_or_equal:due_from'],
             'q' => ['sometimes', 'nullable', 'string', 'max:160'],
             'overdue' => ['sometimes', 'nullable', 'boolean'],
+            'collectible' => ['sometimes', 'nullable', 'boolean'],
+            'debtor_id' => ['sometimes', 'nullable', 'integer', 'exists:debtors,id'],
             'per_page' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:100'],
             'page' => ['sometimes', 'nullable', 'integer', 'min:1'],
         ];
@@ -36,7 +38,7 @@ class IndexLoansRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        foreach (['status', 'kind', 'due_from', 'due_to', 'q', 'overdue', 'per_page', 'page'] as $key) {
+        foreach (['status', 'kind', 'due_from', 'due_to', 'q', 'overdue', 'collectible', 'debtor_id', 'per_page', 'page'] as $key) {
             if ($this->exists($key) && $this->input($key) === '') {
                 $this->merge([$key => null]);
             }
@@ -50,7 +52,9 @@ class IndexLoansRequest extends FormRequest
      *     due_from: ?string,
      *     due_to: ?string,
      *     q: ?string,
-     *     overdue: ?bool
+     *     overdue: ?bool,
+     *     collectible: ?bool,
+     *     debtor_id: ?int
      * }
      */
     public function filters(): array
@@ -65,6 +69,12 @@ class IndexLoansRequest extends FormRequest
             'q' => $validated['q'] ?? null,
             'overdue' => array_key_exists('overdue', $validated)
                 ? ($validated['overdue'] !== null ? (bool) $validated['overdue'] : null)
+                : null,
+            'collectible' => array_key_exists('collectible', $validated)
+                ? ($validated['collectible'] !== null ? (bool) $validated['collectible'] : null)
+                : null,
+            'debtor_id' => isset($validated['debtor_id']) && $validated['debtor_id'] !== null
+                ? (int) $validated['debtor_id']
                 : null,
         ];
     }

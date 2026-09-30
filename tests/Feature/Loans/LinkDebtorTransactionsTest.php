@@ -24,7 +24,7 @@ class LinkDebtorTransactionsTest extends TestCase
         config(['aura.features.loans' => true]);
     }
 
-    public function test_bulk_links_debits_reusing_or_creating_open_loan(): void
+    public function test_bulk_links_debits_creating_one_loan_per_transaction(): void
     {
         $user = User::factory()->admin()->create();
         $debtor = Debtor::factory()->create([
@@ -69,12 +69,17 @@ class LinkDebtorTransactionsTest extends TestCase
         $debitB->refresh();
 
         $this->assertNotNull($debitA->loan_id);
-        $this->assertSame((int) $debitA->loan_id, (int) $debitB->loan_id);
+        $this->assertNotNull($debitB->loan_id);
+        $this->assertNotSame((int) $debitA->loan_id, (int) $debitB->loan_id);
 
-        $loan = Loan::query()->findOrFail($debitA->loan_id);
-        $this->assertSame($debtor->id, (int) $loan->debtor_id);
-        $this->assertSame('João', $loan->debtor_name);
-        $this->assertSame('open', $loan->status->value);
+        $loanA = Loan::query()->findOrFail($debitA->loan_id);
+        $loanB = Loan::query()->findOrFail($debitB->loan_id);
+        $this->assertSame($debtor->id, (int) $loanA->debtor_id);
+        $this->assertSame($debtor->id, (int) $loanB->debtor_id);
+        $this->assertSame('40.00', $loanA->amount);
+        $this->assertSame('25.00', $loanB->amount);
+        $this->assertSame('open', $loanA->status->value);
+        $this->assertSame(2, Loan::query()->where('debtor_id', $debtor->id)->count());
 
         $this->assertDatabaseHas('transactions', [
             'id' => $credit->id,
@@ -82,7 +87,7 @@ class LinkDebtorTransactionsTest extends TestCase
         ]);
     }
 
-    public function test_skips_already_linked_to_same_debtor_and_reassigns_others(): void
+    public function test_skips_already_linked_to_same_debtor_and_creates_new_for_others(): void
     {
         $user = User::factory()->admin()->create();
         $debtor = Debtor::factory()->create(['user_id' => $user->id, 'name' => 'Ana']);
@@ -93,6 +98,7 @@ class LinkDebtorTransactionsTest extends TestCase
             'debtor_id' => $debtor->id,
             'debtor_name' => 'Ana',
             'status' => 'open',
+            'amount' => '10.00',
         ]);
         $otherLoan = Loan::factory()->create([
             'user_id' => $user->id,
@@ -109,6 +115,7 @@ class LinkDebtorTransactionsTest extends TestCase
         $fromOther = Transaction::factory()->manual()->for($user)->create([
             'occurred_on' => now()->toDateString(),
             'type' => 'debit',
+            'amount' => '33.00',
             'loan_id' => $otherLoan->id,
         ]);
 
@@ -124,10 +131,15 @@ class LinkDebtorTransactionsTest extends TestCase
             'id' => $already->id,
             'loan_id' => $ownLoan->id,
         ]);
-        $this->assertDatabaseHas('transactions', [
-            'id' => $fromOther->id,
-            'loan_id' => $ownLoan->id,
-        ]);
+
+        $fromOther->refresh();
+        $this->assertNotNull($fromOther->loan_id);
+        $this->assertNotSame((int) $ownLoan->id, (int) $fromOther->loan_id);
+        $this->assertNotSame((int) $otherLoan->id, (int) $fromOther->loan_id);
+
+        $newLoan = Loan::query()->findOrFail($fromOther->loan_id);
+        $this->assertSame($debtor->id, (int) $newLoan->debtor_id);
+        $this->assertSame('33.00', $newLoan->amount);
     }
 
     public function test_rejects_empty_selection_and_foreign_debtor(): void

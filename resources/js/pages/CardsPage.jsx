@@ -497,6 +497,7 @@ export default function CardsPage() {
                 open={linkTarget !== null}
                 card={linkTarget}
                 onClose={() => setLinkTarget(null)}
+                onLinked={refresh}
             />
         </div>
     );

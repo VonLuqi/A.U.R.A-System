@@ -85,8 +85,12 @@ trait AppliesTransactionFilters
             });
         }
 
-        if (! empty($filters['has_loan'])) {
-            $query->whereNotNull('transactions.loan_id');
+        if (array_key_exists('has_loan', $filters) && $filters['has_loan'] !== null) {
+            if ($filters['has_loan']) {
+                $query->whereNotNull('transactions.loan_id');
+            } else {
+                $query->whereNull('transactions.loan_id');
+            }
         }
 
         if (array_key_exists('has_credit_card', $filters) && $filters['has_credit_card'] !== null) {

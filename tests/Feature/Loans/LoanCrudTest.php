@@ -262,4 +262,49 @@ class LoanCrudTest extends TestCase
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['expense_description']);
     }
+
+    public function test_index_filters_by_debtor_id_and_collectible(): void
+    {
+        $user = User::factory()->admin()->create();
+        $debtorA = \App\Models\Debtor::factory()->create(['user_id' => $user->id, 'name' => 'Ana']);
+        $debtorB = \App\Models\Debtor::factory()->create(['user_id' => $user->id, 'name' => 'Bruno']);
+
+        $openA = Loan::factory()->create([
+            'user_id' => $user->id,
+            'debtor_id' => $debtorA->id,
+            'debtor_name' => 'Ana',
+            'status' => LoanStatus::Open,
+            'due_on' => '2026-10-01',
+        ]);
+        Loan::factory()->create([
+            'user_id' => $user->id,
+            'debtor_id' => $debtorA->id,
+            'debtor_name' => 'Ana',
+            'status' => LoanStatus::Paid,
+            'due_on' => '2026-09-01',
+        ]);
+        Loan::factory()->create([
+            'user_id' => $user->id,
+            'debtor_id' => $debtorB->id,
+            'debtor_name' => 'Bruno',
+            'status' => LoanStatus::Open,
+            'due_on' => '2026-10-05',
+        ]);
+
+        $this->actingAs($user)
+            ->getJson('/api/loans?debtor_id='.$debtorA->id)
+            ->assertOk()
+            ->assertJsonPath('meta.total', 2);
+
+        $this->actingAs($user)
+            ->getJson('/api/loans?debtor_id='.$debtorA->id.'&collectible=1')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.id', $openA->id);
+
+        $this->actingAs($user)
+            ->getJson('/api/loans?collectible=1')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 2);
+    }
 }

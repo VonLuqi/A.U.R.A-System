@@ -30,7 +30,9 @@ final class LoanService
      *     due_from?: string|null,
      *     due_to?: string|null,
      *     q?: string|null,
-     *     overdue?: bool|null
+     *     overdue?: bool|null,
+     *     debtor_id?: int|null,
+     *     collectible?: bool|null
      * }  $filters
      * @return Builder<Loan>
      */
@@ -46,6 +48,8 @@ final class LoanService
         $status = $filters['status'] ?? null;
         if (is_string($status) && $status !== '' && in_array($status, LoanStatus::values(), true)) {
             $query->where('status', $status);
+        } elseif (! empty($filters['collectible'])) {
+            $query->whereIn('status', [LoanStatus::Open, LoanStatus::Partial]);
         }
 
         $kind = $filters['kind'] ?? null;
@@ -66,6 +70,11 @@ final class LoanService
         if (is_string($q) && $q !== '') {
             $like = '%'.addcslashes($q, '%_\\').'%';
             $query->where('debtor_name', 'like', $like);
+        }
+
+        $debtorId = $filters['debtor_id'] ?? null;
+        if ($debtorId !== null) {
+            $query->where('debtor_id', (int) $debtorId);
         }
 
         if (! empty($filters['overdue'])) {

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+    ArrowLeft,
     Ban,
     Banknote,
+    ChevronRight,
     Link2,
     ListFilter,
     Pencil,
@@ -66,17 +68,18 @@ const KIND_FILTERS = [
 ];
 
 const VIEW_TABS = [
-    { id: 'loans', label: 'Empréstimos' },
     { id: 'people', label: 'Pessoas' },
+    { id: 'loans', label: 'Empréstimos' },
 ];
 
 /**
- * LoansPage — CRUD de empréstimos + pessoas (devedores).
+ * LoansPage — pessoas em cards (detalhe ao clicar) + aba Empréstimos.
  */
 export default function LoansPage() {
     useDocumentTitle('Devedores · Aura');
 
-    const [view, setView] = useState(/** @type {'loans'|'people'} */ ('loans'));
+    const [view, setView] = useState(/** @type {'people'|'loans'} */ ('people'));
+    const [selectedDebtor, setSelectedDebtor] = useState(null);
     const [qInput, setQInput] = useState('');
     const [q, setQ] = useState('');
     const [peopleQInput, setPeopleQInput] = useState('');
@@ -98,35 +101,10 @@ export default function LoansPage() {
     const categories = useCategories();
     const debtors = useDebtors({
         per_page: 100,
-        q: view === 'people' && peopleQ ? peopleQ : undefined,
+        q: view === 'people' && !selectedDebtor && peopleQ ? peopleQ : undefined,
     });
 
-    const refreshDebtors = useCallback(async () => {
-        await debtors.refetch();
-    }, [debtors.refetch]);
-
-    const createDebtor = useCreateDebtor({ onSuccess: refreshDebtors });
-    const updateDebtor = useUpdateDebtor({ onSuccess: refreshDebtors });
-    const deleteDebtorMut = useDeleteDebtor({ onSuccess: refreshDebtors });
-
-    useEffect(() => {
-        const timer = window.setTimeout(() => {
-            setQ(qInput.trim());
-            setPage(1);
-        }, 300);
-
-        return () => window.clearTimeout(timer);
-    }, [qInput]);
-
-    useEffect(() => {
-        const timer = window.setTimeout(() => {
-            setPeopleQ(peopleQInput.trim());
-        }, 300);
-
-        return () => window.clearTimeout(timer);
-    }, [peopleQInput]);
-
-    const filters = useMemo(() => {
+    const loansFilters = useMemo(() => {
         /** @type {Record<string, string|number|boolean>} */
         const params = { page, per_page: 50 };
 
@@ -147,25 +125,89 @@ export default function LoansPage() {
         return params;
     }, [q, statusFilter, kindFilter, page]);
 
-    const loans = useLoans(filters);
+    const detailFilters = useMemo(
+        () => ({
+            debtor_id: selectedDebtor?.id,
+            per_page: 100,
+            enabled: Boolean(selectedDebtor?.id),
+        }),
+        [selectedDebtor?.id],
+    );
 
-    const refresh = useCallback(async () => {
-        await loans.refetch();
-    }, [loans.refetch]);
+    const loans = useLoans(
+        view === 'loans' && !selectedDebtor
+            ? loansFilters
+            : { enabled: false },
+    );
+    const detailLoans = useLoans(detailFilters);
 
-    const createLoan = useCreateLoan({ onSuccess: refresh });
-    const updateLoan = useUpdateLoan({ onSuccess: refresh });
-    const deleteLoan = useDeleteLoan({ onSuccess: refresh });
-    const markPaid = useMarkLoanPaid({ onSuccess: refresh });
-    const cancelLoan = useCancelLoan({ onSuccess: refresh });
+    const refreshDebtors = useCallback(async () => {
+        await debtors.refetch();
+    }, [debtors.refetch]);
+
+    const refreshLoans = useCallback(async () => {
+        await Promise.all([
+            loans.refetch(),
+            detailLoans.refetch(),
+        ]);
+    }, [loans.refetch, detailLoans.refetch]);
+
+    const refreshAll = useCallback(async () => {
+        await Promise.all([refreshDebtors(), refreshLoans()]);
+    }, [refreshDebtors, refreshLoans]);
+
+    const createDebtor = useCreateDebtor({ onSuccess: refreshDebtors });
+    const updateDebtor = useUpdateDebtor({ onSuccess: refreshDebtors });
+    const deleteDebtorMut = useDeleteDebtor({
+        onSuccess: async () => {
+            setSelectedDebtor(null);
+            await refreshDebtors();
+        },
+    });
+
+    const createLoan = useCreateLoan({ onSuccess: refreshAll });
+    const updateLoan = useUpdateLoan({ onSuccess: refreshAll });
+    const deleteLoan = useDeleteLoan({ onSuccess: refreshAll });
+    const markPaid = useMarkLoanPaid({ onSuccess: refreshAll });
+    const cancelLoan = useCancelLoan({ onSuccess: refreshAll });
+
+    useEffect(() => {
+        const timer = window.setTimeout(() => {
+            setQ(qInput.trim());
+            setPage(1);
+        }, 300);
+
+        return () => window.clearTimeout(timer);
+    }, [qInput]);
+
+    useEffect(() => {
+        const timer = window.setTimeout(() => {
+            setPeopleQ(peopleQInput.trim());
+        }, 300);
+
+        return () => window.clearTimeout(timer);
+    }, [peopleQInput]);
+
+    useEffect(() => {
+        if (!selectedDebtor?.id) {
+            return;
+        }
+        const fresh = debtors.data.find((d) => d.id === selectedDebtor.id);
+        if (fresh) {
+            setSelectedDebtor(fresh);
+        }
+    }, [debtors.data, selectedDebtor?.id]);
 
     const formOpen = formState !== null;
     const formMode = formState?.mode === 'edit' ? 'edit' : 'create';
     const formSubmitting =
         formMode === 'edit' ? updateLoan.isLoading : createLoan.isLoading;
 
-    const rows = loans.data;
-    const meta = loans.meta;
+    const rows = selectedDebtor ? detailLoans.data : loans.data;
+    const meta = selectedDebtor ? detailLoans.meta : loans.meta;
+    const listStatus = selectedDebtor ? detailLoans.status : loans.status;
+    const listError = selectedDebtor ? detailLoans.error : loans.error;
+    const listRefetch = selectedDebtor ? detailLoans.refetch : loans.refetch;
     const peopleRows = debtors.data;
 
     const remainingLabel =
@@ -223,27 +265,177 @@ export default function LoansPage() {
         </div>
     );
 
+    function renderLoanList({ showDebtorColumn = true } = {}) {
+        return (
+            <>
+                {listStatus === 'error' ? (
+                    <ErrorState
+                        title="Não foi possível carregar as cobranças"
+                        message={listError || 'Tente novamente em instantes.'}
+                        onRetry={listRefetch}
+                    />
+                ) : null}
+
+                {listStatus === 'loading' && rows.length === 0 ? (
+                    <div aria-busy="true" aria-label="Carregando cobranças">
+                        <Skeleton.Table rows={5} />
+                    </div>
+                ) : null}
+
+                {listStatus !== 'error' &&
+                listStatus !== 'loading' &&
+                rows.length === 0 ? (
+                    <EmptyState
+                        title={
+                            selectedDebtor
+                                ? 'Nenhuma cobrança para esta pessoa'
+                                : 'Nada a cobrar no momento'
+                        }
+                        description={
+                            selectedDebtor
+                                ? 'Vincule saídas ou registre um empréstimo.'
+                                : 'Cadastre pessoas e vincule saídas ou empréstimos.'
+                        }
+                        action={
+                            selectedDebtor
+                                ? {
+                                      label: 'Vincular saídas',
+                                      onClick: () => setLinkDebtorTarget(selectedDebtor),
+                                  }
+                                : {
+                                      label: 'Ver pessoas',
+                                      onClick: () => {
+                                          setView('people');
+                                          setSelectedDebtor(null);
+                                      },
+                                  }
+                        }
+                    />
+                ) : null}
+
+                {rows.length > 0 ? (
+                    <div className="overflow-hidden rounded-xl border border-border-subtle bg-surface">
+                        <ul
+                            className={cx(
+                                'md:hidden',
+                                listStatus === 'loading' && 'opacity-60',
+                            )}
+                        >
+                            {rows.map((row) => (
+                                <LoanMobileRow
+                                    key={row.id}
+                                    row={row}
+                                    onEdit={() => setFormState({ mode: 'edit', loan: row })}
+                                    onMarkPaid={() => setMarkPaidTarget(row)}
+                                    onCancel={() => setCancelTarget(row)}
+                                    onDelete={() => setDeleteTarget(row)}
+                                />
+                            ))}
+                        </ul>
+
+                        <div className="hidden overflow-x-auto md:block">
+                            <table className="min-w-[64rem] w-full border-collapse text-body text-ink">
+                                <thead>
+                                    <tr className="border-b border-border-subtle text-left text-caption font-medium text-ink-secondary">
+                                        {showDebtorColumn ? (
+                                            <th className="px-4 py-3">Devedor</th>
+                                        ) : (
+                                            <th className="px-4 py-3">Descrição</th>
+                                        )}
+                                        <th className="px-4 py-3">Tipo</th>
+                                        <th className="px-4 py-3">Valor</th>
+                                        <th className="px-4 py-3">Restante</th>
+                                        <th className="px-4 py-3">Cobrar em</th>
+                                        <th className="px-4 py-3">Status</th>
+                                        <th className="px-4 py-3">Cartão</th>
+                                        <th className="px-4 py-3 text-right">
+                                            <span className="sr-only">Ações</span>
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody
+                                    className={
+                                        listStatus === 'loading' ? 'opacity-60' : undefined
+                                    }
+                                >
+                                    {rows.map((row) => (
+                                        <LoanDesktopRow
+                                            key={row.id}
+                                            row={row}
+                                            showDebtor={showDebtorColumn}
+                                            onEdit={() =>
+                                                setFormState({ mode: 'edit', loan: row })
+                                            }
+                                            onMarkPaid={() => setMarkPaidTarget(row)}
+                                            onCancel={() => setCancelTarget(row)}
+                                            onDelete={() => setDeleteTarget(row)}
+                                        />
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                ) : null}
+
+                {!selectedDebtor && meta && meta.last_page > 1 ? (
+                    <div className="flex items-center justify-center gap-2">
+                        <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            disabled={page <= 1 || listStatus === 'loading'}
+                            onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        >
+                            Anterior
+                        </Button>
+                        <span className="text-caption text-ink-secondary">
+                            Página {meta.current_page} de {meta.last_page}
+                        </span>
+                        <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            disabled={
+                                page >= meta.last_page || listStatus === 'loading'
+                            }
+                            onClick={() => setPage((p) => p + 1)}
+                        >
+                            Próxima
+                        </Button>
+                    </div>
+                ) : null}
+            </>
+        );
+    }
+
     return (
         <div className="flex flex-col gap-8 md:gap-10">
             <PageHeader
                 title="Devedores"
-                description="Pessoas, empréstimos e valores a cobrar."
+                description="Pessoas e o que cada uma deve. Empréstimos na aba ao lado."
                 actions={(
                     <div className="flex flex-wrap items-center gap-2">
-                        <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => setDebtorForm({ mode: 'create' })}
-                        >
-                            <Plus size={16} strokeWidth={2} aria-hidden />
-                            Nova pessoa
-                        </Button>
-                        {view === 'loans' ? (
+                        {!selectedDebtor ? (
                             <Button
                                 type="button"
                                 size="sm"
-                                onClick={() => setFormState({ mode: 'create' })}
+                                variant="secondary"
+                                onClick={() => setDebtorForm({ mode: 'create' })}
+                            >
+                                <Plus size={16} strokeWidth={2} aria-hidden />
+                                Nova pessoa
+                            </Button>
+                        ) : null}
+                        {selectedDebtor || view === 'loans' ? (
+                            <Button
+                                type="button"
+                                size="sm"
+                                onClick={() =>
+                                    setFormState({
+                                        mode: 'create',
+                                        prefillDebtorId: selectedDebtor?.id ?? null,
+                                    })
+                                }
                             >
                                 <Plus size={16} strokeWidth={2} aria-hidden />
                                 Novo empréstimo
@@ -253,23 +445,86 @@ export default function LoansPage() {
                 )}
             />
 
-            <div
-                className="flex flex-wrap items-center gap-2"
-                role="tablist"
-                aria-label="Seções de devedores"
-            >
-                {VIEW_TABS.map((tab) => (
-                    <Pill
-                        key={tab.id}
-                        active={view === tab.id}
-                        onClick={() => setView(tab.id)}
-                    >
-                        {tab.label}
-                    </Pill>
-                ))}
-            </div>
+            {!selectedDebtor ? (
+                <div
+                    className="flex flex-wrap items-center gap-2"
+                    role="tablist"
+                    aria-label="Seções de devedores"
+                >
+                    {VIEW_TABS.map((tab) => (
+                        <Pill
+                            key={tab.id}
+                            active={view === tab.id}
+                            onClick={() => {
+                                setView(tab.id);
+                                setSelectedDebtor(null);
+                                setPage(1);
+                            }}
+                        >
+                            {tab.label}
+                        </Pill>
+                    ))}
+                </div>
+            ) : null}
 
-            {view === 'people' ? (
+            {selectedDebtor ? (
+                <>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                            <button
+                                type="button"
+                                className="mb-2 inline-flex items-center gap-1.5 text-caption font-medium text-ink-secondary transition hover:text-ink"
+                                onClick={() => setSelectedDebtor(null)}
+                            >
+                                <ArrowLeft size={14} strokeWidth={2} aria-hidden />
+                                Voltar às pessoas
+                            </button>
+                            <h2 className="truncate text-h2 font-semibold text-ink">
+                                {selectedDebtor.name}
+                            </h2>
+                            {selectedDebtor.notes ? (
+                                <p className="mt-1 text-caption text-ink-secondary">
+                                    {selectedDebtor.notes}
+                                </p>
+                            ) : null}
+                            <p className="mt-2 text-caption text-ink-muted">
+                                {Number(selectedDebtor.open_loans_count ?? 0)} em aberto
+                                {selectedDebtor.open_remaining_total != null
+                                    ? ` · ${formatMoney(selectedDebtor.open_remaining_total)}`
+                                    : ''}
+                            </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => setLinkDebtorTarget(selectedDebtor)}
+                            >
+                                <Link2 size={16} strokeWidth={2} aria-hidden />
+                                Vincular saídas
+                            </Button>
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant="secondary"
+                                onClick={() =>
+                                    setDebtorForm({
+                                        mode: 'edit',
+                                        debtor: selectedDebtor,
+                                    })
+                                }
+                            >
+                                <Pencil size={16} strokeWidth={2} aria-hidden />
+                                Editar
+                            </Button>
+                        </div>
+                    </div>
+                    {renderLoanList({ showDebtorColumn: false })}
+                </>
+            ) : null}
+
+            {!selectedDebtor && view === 'people' ? (
                 <>
                     <section className="flex flex-col gap-2" aria-label="Busca de pessoas">
                         <Input
@@ -297,8 +552,14 @@ export default function LoansPage() {
                     ) : null}
 
                     {debtors.status === 'loading' && peopleRows.length === 0 ? (
-                        <div aria-busy="true" aria-label="Carregando pessoas">
-                            <Skeleton.Table rows={5} />
+                        <div
+                            className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+                            aria-busy="true"
+                            aria-label="Carregando pessoas"
+                        >
+                            {[0, 1, 2, 3, 4, 5].map((key) => (
+                                <Skeleton key={key} className="h-36 w-full" radius="xl" />
+                            ))}
                         </div>
                     ) : null}
 
@@ -316,246 +577,93 @@ export default function LoansPage() {
                     ) : null}
 
                     {peopleRows.length > 0 ? (
-                        <div className="overflow-hidden rounded-xl border border-border-subtle bg-surface">
-                            <ul
-                                className={cx(
-                                    'md:hidden',
-                                    debtors.status === 'loading' && 'opacity-60',
-                                )}
-                            >
-                                {peopleRows.map((row) => (
-                                    <DebtorMobileRow
-                                        key={row.id}
-                                        row={row}
-                                        onLink={() => setLinkDebtorTarget(row)}
-                                        onEdit={() =>
-                                            setDebtorForm({ mode: 'edit', debtor: row })
-                                        }
-                                        onDelete={() => setDeleteDebtorTarget(row)}
-                                    />
-                                ))}
-                            </ul>
-
-                            <div className="hidden overflow-x-auto md:block">
-                                <table className="min-w-[36rem] w-full border-collapse text-body text-ink">
-                                    <thead>
-                                        <tr className="border-b border-border-subtle text-left text-caption font-medium text-ink-secondary">
-                                            <th className="px-4 py-3">Nome</th>
-                                            <th className="px-4 py-3">Notas</th>
-                                            <th className="px-4 py-3">Em aberto</th>
-                                            <th className="px-4 py-3 text-right">
-                                                <span className="sr-only">Ações</span>
-                                            </th>
-                                        </tr>
-                                    </thead>
-                                    <tbody
-                                        className={
-                                            debtors.status === 'loading'
-                                                ? 'opacity-60'
-                                                : undefined
-                                        }
-                                    >
-                                        {peopleRows.map((row) => (
-                                            <DebtorDesktopRow
-                                                key={row.id}
-                                                row={row}
-                                                onLink={() => setLinkDebtorTarget(row)}
-                                                onEdit={() =>
-                                                    setDebtorForm({
-                                                        mode: 'edit',
-                                                        debtor: row,
-                                                    })
-                                                }
-                                                onDelete={() =>
-                                                    setDeleteDebtorTarget(row)
-                                                }
-                                            />
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
+                        <div
+                            className={cx(
+                                'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3',
+                                debtors.status === 'loading' && 'opacity-60',
+                            )}
+                        >
+                            {peopleRows.map((row) => (
+                                <DebtorCard
+                                    key={row.id}
+                                    row={row}
+                                    onOpen={() => setSelectedDebtor(row)}
+                                    onLink={() => setLinkDebtorTarget(row)}
+                                    onEdit={() =>
+                                        setDebtorForm({ mode: 'edit', debtor: row })
+                                    }
+                                    onDelete={() => setDeleteDebtorTarget(row)}
+                                />
+                            ))}
                         </div>
                     ) : null}
                 </>
             ) : null}
 
-            {view === 'loans' ? (
-            <>
-            <section className="flex flex-col gap-2" aria-label="Filtros de empréstimos">
-                <div className="flex items-center gap-2 sm:hidden">
-                    <Input
-                        type="search"
-                        value={qInput}
-                        placeholder="Buscar por devedor"
-                        aria-label="Buscar empréstimos"
-                        className="min-w-0 flex-1"
-                        onChange={(event) => setQInput(event.target.value)}
-                    />
-                    <button
-                        type="button"
-                        className={cx(
-                            'relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border transition',
-                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
-                            activeFilterCount > 0
-                                ? 'border-brand bg-brand/15 text-ink'
-                                : 'border-border bg-transparent text-ink hover:bg-surface-raised',
-                        )}
-                        aria-label="Abrir filtros"
-                        aria-haspopup="dialog"
-                        aria-expanded={filtersOpen}
-                        onClick={() => setFiltersOpen(true)}
-                    >
-                        <ListFilter size={18} strokeWidth={1.75} aria-hidden />
-                        {activeFilterCount > 0 ? (
-                            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-[10px] font-semibold text-ink-on-brand">
-                                {activeFilterCount}
-                            </span>
-                        ) : null}
-                    </button>
-                </div>
-                <p className="text-caption text-ink-muted sm:hidden">
-                    {activeFilterLabel}
-                    {meta?.loans_used != null
-                        ? ` · ${meta.loans_used} empréstimo${meta.loans_used === 1 ? '' : 's'} · cota ${remainingLabel}`
-                        : null}
-                </p>
-
-                <div className="hidden flex-col gap-2 sm:flex">
-                    <div className="flex flex-wrap items-center gap-2">
-                        {statusPills}
-                        <Input
-                            type="search"
-                            value={qInput}
-                            placeholder="Buscar por devedor"
-                            aria-label="Buscar empréstimos"
-                            className="min-w-[12rem] flex-1 sm:max-w-xs"
-                            onChange={(event) => setQInput(event.target.value)}
-                        />
-                    </div>
-                    {kindPills}
-                </div>
-                {meta?.loans_used != null ? (
-                    <p className="hidden text-caption text-ink-muted sm:block">
-                        {meta.loans_used} empréstimo{meta.loans_used === 1 ? '' : 's'} · cota{' '}
-                        {remainingLabel}
-                    </p>
-                ) : null}
-            </section>
-
-            {loans.status === 'error' ? (
-                <ErrorState
-                    title="Não foi possível carregar os empréstimos"
-                    message={loans.error || 'Tente novamente em instantes.'}
-                    onRetry={loans.refetch}
-                />
-            ) : null}
-
-            {loans.status === 'loading' && rows.length === 0 ? (
-                <div aria-busy="true" aria-label="Carregando empréstimos">
-                    <Skeleton.Table rows={5} />
-                </div>
-            ) : null}
-
-            {loans.status !== 'error' &&
-            loans.status !== 'loading' &&
-            rows.length === 0 ? (
-                <EmptyState
-                    title="Nenhum empréstimo ainda"
-                    description="Registre um empréstimo ou valor a receber de alguém."
-                    action={{
-                        label: 'Criar primeiro empréstimo',
-                        onClick: () => setFormState({ mode: 'create' }),
-                    }}
-                />
-            ) : null}
-
-            {rows.length > 0 ? (
-                <div className="overflow-hidden rounded-xl border border-border-subtle bg-surface">
-                    <ul
-                        className={cx(
-                            'md:hidden',
-                            loans.status === 'loading' && 'opacity-60',
-                        )}
-                    >
-                        {rows.map((row) => (
-                            <LoanMobileRow
-                                key={row.id}
-                                row={row}
-                                onEdit={() => setFormState({ mode: 'edit', loan: row })}
-                                onMarkPaid={() => setMarkPaidTarget(row)}
-                                onCancel={() => setCancelTarget(row)}
-                                onDelete={() => setDeleteTarget(row)}
+            {!selectedDebtor && view === 'loans' ? (
+                <>
+                    <section className="flex flex-col gap-2" aria-label="Filtros de empréstimos">
+                        <div className="flex items-center gap-2 sm:hidden">
+                            <Input
+                                type="search"
+                                value={qInput}
+                                placeholder="Buscar por devedor"
+                                aria-label="Buscar empréstimos"
+                                className="min-w-0 flex-1"
+                                onChange={(event) => setQInput(event.target.value)}
                             />
-                        ))}
-                    </ul>
-
-                    <div className="hidden overflow-x-auto md:block">
-                        <table className="min-w-[64rem] w-full border-collapse text-body text-ink">
-                            <thead>
-                                <tr className="border-b border-border-subtle text-left text-caption font-medium text-ink-secondary">
-                                    <th className="px-4 py-3">Devedor</th>
-                                    <th className="px-4 py-3">Tipo</th>
-                                    <th className="px-4 py-3">Valor</th>
-                                    <th className="px-4 py-3">Restante</th>
-                                    <th className="px-4 py-3">Cobrar em</th>
-                                    <th className="px-4 py-3">Status</th>
-                                    <th className="px-4 py-3">Cartão</th>
-                                    <th className="px-4 py-3 text-right">
-                                        <span className="sr-only">Ações</span>
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody
-                                className={
-                                    loans.status === 'loading' ? 'opacity-60' : undefined
-                                }
+                            <button
+                                type="button"
+                                className={cx(
+                                    'relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border transition',
+                                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
+                                    activeFilterCount > 0
+                                        ? 'border-brand bg-brand/15 text-ink'
+                                        : 'border-border bg-transparent text-ink hover:bg-surface-raised',
+                                )}
+                                aria-label="Abrir filtros"
+                                aria-haspopup="dialog"
+                                aria-expanded={filtersOpen}
+                                onClick={() => setFiltersOpen(true)}
                             >
-                                {rows.map((row) => (
-                                    <LoanDesktopRow
-                                        key={row.id}
-                                        row={row}
-                                        onEdit={() =>
-                                            setFormState({ mode: 'edit', loan: row })
-                                        }
-                                        onMarkPaid={() => setMarkPaidTarget(row)}
-                                        onCancel={() => setCancelTarget(row)}
-                                        onDelete={() => setDeleteTarget(row)}
-                                    />
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            ) : null}
+                                <ListFilter size={18} strokeWidth={1.75} aria-hidden />
+                                {activeFilterCount > 0 ? (
+                                    <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-[10px] font-semibold text-ink-on-brand">
+                                        {activeFilterCount}
+                                    </span>
+                                ) : null}
+                            </button>
+                        </div>
+                        <p className="text-caption text-ink-muted sm:hidden">
+                            {activeFilterLabel}
+                            {meta?.loans_used != null
+                                ? ` · ${meta.loans_used} empréstimo${meta.loans_used === 1 ? '' : 's'} · cota ${remainingLabel}`
+                                : null}
+                        </p>
 
-            {meta && meta.last_page > 1 ? (
-                <div className="flex items-center justify-center gap-2">
-                    <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        disabled={page <= 1 || loans.status === 'loading'}
-                        onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    >
-                        Anterior
-                    </Button>
-                    <span className="text-caption text-ink-secondary">
-                        Página {meta.current_page} de {meta.last_page}
-                    </span>
-                    <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        disabled={
-                            page >= meta.last_page || loans.status === 'loading'
-                        }
-                        onClick={() => setPage((p) => p + 1)}
-                    >
-                        Próxima
-                    </Button>
-                </div>
-            ) : null}
-            </>
+                        <div className="hidden flex-col gap-2 sm:flex">
+                            <div className="flex flex-wrap items-center gap-2">
+                                {statusPills}
+                                <Input
+                                    type="search"
+                                    value={qInput}
+                                    placeholder="Buscar por devedor"
+                                    aria-label="Buscar empréstimos"
+                                    className="min-w-[12rem] flex-1 sm:max-w-xs"
+                                    onChange={(event) => setQInput(event.target.value)}
+                                />
+                            </div>
+                            {kindPills}
+                        </div>
+                        {meta?.loans_used != null ? (
+                            <p className="hidden text-caption text-ink-muted sm:block">
+                                {meta.loans_used} empréstimo
+                                {meta.loans_used === 1 ? '' : 's'} · cota {remainingLabel}
+                            </p>
+                        ) : null}
+                    </section>
+                    {renderLoanList({ showDebtorColumn: true })}
+                </>
             ) : null}
 
             <Modal
@@ -612,8 +720,11 @@ export default function LoansPage() {
                     if (formMode === 'edit' && formState?.loan?.id != null) {
                         await updateLoan.mutate(formState.loan.id, payload);
                     } else {
-                        await createLoan.mutate(payload);
-                        await refreshDebtors();
+                        const withDebtor =
+                            formState?.prefillDebtorId && !payload.debtor_id
+                                ? { ...payload, debtor_id: formState.prefillDebtorId }
+                                : payload;
+                        await createLoan.mutate(withDebtor);
                     }
                     setFormState(null);
                 }}
@@ -715,7 +826,7 @@ export default function LoansPage() {
                 open={linkDebtorTarget !== null}
                 debtor={linkDebtorTarget}
                 onClose={() => setLinkDebtorTarget(null)}
-                onLinked={refreshDebtors}
+                onLinked={refreshAll}
             />
         </div>
     );
@@ -727,31 +838,65 @@ function canActOnLoan(loan) {
     );
 }
 
-function DebtorMobileRow({ row, onLink, onEdit, onDelete }) {
+function DebtorCard({ row, onOpen, onLink, onEdit, onDelete }) {
     const openCount = Number(row.open_loans_count ?? 0);
+    const remaining = Number(row.open_remaining_total ?? 0);
 
     return (
-        <li className="border-b border-border-subtle/60 px-3 py-3 last:border-b-0">
-            <div className="min-w-0">
-                <p className="truncate text-body font-semibold text-ink" title={row.name}>
-                    {row.name}
-                </p>
-                {row.notes ? (
-                    <p className="mt-0.5 truncate text-small text-ink-secondary" title={row.notes}>
-                        {row.notes}
+        <article
+            className={cx(
+                'group flex flex-col gap-3 rounded-2xl border border-border-subtle bg-surface p-4',
+                'transition hover:border-border hover:bg-surface-raised',
+            )}
+        >
+            <button
+                type="button"
+                className="flex w-full min-w-0 items-start gap-3 text-left"
+                onClick={onOpen}
+                aria-label={`Abrir dívidas de ${row.name}`}
+            >
+                <div className="min-w-0 flex-1">
+                    <p className="truncate text-body font-semibold text-ink" title={row.name}>
+                        {row.name}
                     </p>
-                ) : null}
-                <div className="mt-1.5">
-                    {openCount > 0 ? (
-                        <Badge tone="danger">
-                            {openCount} em aberto
-                        </Badge>
+                    {row.notes ? (
+                        <p
+                            className="mt-0.5 line-clamp-2 text-small text-ink-secondary"
+                            title={row.notes}
+                        >
+                            {row.notes}
+                        </p>
                     ) : (
-                        <Badge tone="meta">Sem empréstimo aberto</Badge>
+                        <p className="mt-0.5 text-small text-ink-muted">
+                            Toque para ver as dívidas
+                        </p>
                     )}
+                    <div className="mt-3 flex flex-wrap items-end justify-between gap-2">
+                        <div className="flex flex-col gap-1">
+                            {openCount > 0 ? (
+                                <Badge tone="danger">{openCount} em aberto</Badge>
+                            ) : (
+                                <Badge tone="meta">Em dia</Badge>
+                            )}
+                        </div>
+                        <p
+                            className={cx(
+                                'text-h3 font-semibold tabular-nums',
+                                openCount > 0 ? 'text-ink' : 'text-ink-muted',
+                            )}
+                        >
+                            {openCount > 0 ? formatMoney(remaining) : '—'}
+                        </p>
+                    </div>
                 </div>
-            </div>
-            <div className="mt-2 flex justify-end gap-1">
+                <ChevronRight
+                    size={18}
+                    strokeWidth={1.75}
+                    className="mt-1 shrink-0 text-ink-muted transition group-hover:text-ink"
+                    aria-hidden
+                />
+            </button>
+            <div className="flex justify-end gap-1 border-t border-border-subtle pt-2">
                 <IconAction
                     label={`Vincular saídas a ${row.name}`}
                     onClick={onLink}
@@ -769,53 +914,7 @@ function DebtorMobileRow({ row, onLink, onEdit, onDelete }) {
                     <Trash2 size={16} strokeWidth={1.75} aria-hidden />
                 </IconAction>
             </div>
-        </li>
-    );
-}
-
-function DebtorDesktopRow({ row, onLink, onEdit, onDelete }) {
-    const openCount = Number(row.open_loans_count ?? 0);
-
-    return (
-        <tr className="border-b border-border-subtle/60 transition hover:bg-surface-raised">
-            <td className="max-w-[14rem] px-4 py-3">
-                <span className="block truncate font-medium" title={row.name}>
-                    {row.name}
-                </span>
-            </td>
-            <td className="max-w-[16rem] px-4 py-3 text-ink-secondary">
-                <span className="block truncate" title={row.notes ?? undefined}>
-                    {row.notes?.trim() ? row.notes : '—'}
-                </span>
-            </td>
-            <td className="px-4 py-3">
-                {openCount > 0 ? (
-                    <Badge tone="danger">{openCount} em aberto</Badge>
-                ) : (
-                    <Badge tone="meta">0</Badge>
-                )}
-            </td>
-            <td className="whitespace-nowrap px-3 py-2 text-right">
-                <div className="flex items-center justify-end gap-1">
-                    <IconAction
-                        label={`Vincular saídas a ${row.name}`}
-                        onClick={onLink}
-                    >
-                        <Link2 size={16} strokeWidth={1.75} aria-hidden />
-                    </IconAction>
-                    <IconAction label={`Editar ${row.name}`} onClick={onEdit}>
-                        <Pencil size={16} strokeWidth={1.75} aria-hidden />
-                    </IconAction>
-                    <IconAction
-                        label={`Excluir ${row.name}`}
-                        tone="danger"
-                        onClick={onDelete}
-                    >
-                        <Trash2 size={16} strokeWidth={1.75} aria-hidden />
-                    </IconAction>
-                </div>
-            </td>
-        </tr>
+        </article>
     );
 }
 
@@ -859,6 +958,11 @@ function LoanMobileRow({ row, onEdit, onMarkPaid, onCancel, onDelete }) {
                     {loanKindLabel(row.kind)} · {formatMoney(row.amount)}
                     {row.credit_card?.name ? ` · ${row.credit_card.name}` : ''}
                 </p>
+                {row.notes ? (
+                    <p className="mt-0.5 truncate text-small text-ink-muted" title={row.notes}>
+                        {row.notes}
+                    </p>
+                ) : null}
                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                     <StatusBadges loan={row} />
                     <span className="text-small text-ink-muted">
@@ -901,15 +1005,25 @@ function LoanMobileRow({ row, onEdit, onMarkPaid, onCancel, onDelete }) {
     );
 }
 
-function LoanDesktopRow({ row, onEdit, onMarkPaid, onCancel, onDelete }) {
+function LoanDesktopRow({
+    row,
+    showDebtor = true,
+    onEdit,
+    onMarkPaid,
+    onCancel,
+    onDelete,
+}) {
     const actionable = canActOnLoan(row);
     const overdue = isLoanOverdue(row);
+    const title = showDebtor
+        ? row.debtor_name
+        : (row.notes?.replace(/^Criado ao vincular lançamento:\s*/i, '') || row.debtor_name);
 
     return (
         <tr className="border-b border-border-subtle/60 transition hover:bg-surface-raised">
-            <td className="max-w-[12rem] px-4 py-3">
-                <span className="block truncate font-medium" title={row.debtor_name}>
-                    {row.debtor_name}
+            <td className="max-w-[14rem] px-4 py-3">
+                <span className="block truncate font-medium" title={title}>
+                    {title}
                 </span>
             </td>
             <td className="px-4 py-3">

@@ -26,10 +26,17 @@ final class DebtorService
     {
         $query = Debtor::query()
             ->forUser($user)
+            ->select('debtors.*')
             ->withCount([
                 'loans as open_loans_count' => function (Builder $q): void {
                     $q->whereIn('status', [LoanStatus::Open->value, LoanStatus::Partial->value]);
                 },
+            ])
+            ->addSelect([
+                'open_remaining_total' => Loan::query()
+                    ->selectRaw('COALESCE(SUM(GREATEST(amount - paid_amount, 0)), 0)')
+                    ->whereColumn('loans.debtor_id', 'debtors.id')
+                    ->whereIn('status', [LoanStatus::Open->value, LoanStatus::Partial->value]),
             ])
             ->orderBy('name')
             ->orderBy('id');
@@ -170,6 +177,7 @@ final class DebtorService
 
     /**
      * Prefer an open/partial loan for the debtor; otherwise create one from the transaction context.
+     * Used when a single manual transaction is tagged with a debtor (not bulk link).
      *
      * @param  array{
      *     amount: numeric,
@@ -193,6 +201,23 @@ final class DebtorService
         if ($open !== null) {
             return $open;
         }
+
+        return $this->createLoanFromTransaction($user, $debtor, $tx);
+    }
+
+    /**
+     * Always create a new open loan from a transaction (bulk link = one debt per saída).
+     *
+     * @param  array{
+     *     amount: numeric,
+     *     occurred_on: string,
+     *     credit_card_id?: int|null,
+     *     description?: string|null
+     * }  $tx
+     */
+    public function createLoanFromTransaction(User $user, Debtor $debtor, array $tx): Loan
+    {
+        $this->assertOwner($user, $debtor);
 
         $creditCardId = isset($tx['credit_card_id']) && $tx['credit_card_id'] !== null
             ? (int) $tx['credit_card_id']
@@ -240,7 +265,7 @@ final class DebtorService
     }
 
     /**
-     * Bulk-link debit transactions to this debtor (reuse/create open loan).
+     * Bulk-link debit transactions to this debtor (one new loan per saída).
      *
      * @param  list<int>  $transactionIds
      * @return array{linked: int, skipped: int, limit: int}
@@ -298,7 +323,7 @@ final class DebtorService
                     continue;
                 }
 
-                $loan = $this->findOpenLoanOrCreateFromTransaction($user, $debtor, [
+                $loan = $this->createLoanFromTransaction($user, $debtor, [
                     'amount' => $tx->amount,
                     'occurred_on' => $tx->occurred_on?->format('Y-m-d') ?? (string) $tx->occurred_on,
                     'credit_card_id' => $tx->credit_card_id,

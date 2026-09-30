@@ -87,6 +87,12 @@ class TransactionCardLoanLinkTest extends TestCase
             ->assertJsonPath('meta.total', 1)
             ->assertJsonPath('data.0.id', $linked->id);
 
+        $this->actingAs($user)
+            ->getJson('/api/transactions?has_loan=0')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.description', 'Sem vínculo');
+
         $loan->refresh();
         $this->assertNotNull($loan->debtor_id);
 

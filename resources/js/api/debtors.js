@@ -14,6 +14,7 @@
  *   name: string,
  *   notes: string|null,
  *   open_loans_count?: number,
+ *   open_remaining_total?: string,
  *   created_at?: string,
  *   updated_at?: string,
  * }} Debtor

@@ -12,6 +12,8 @@ import { getErrorMessage } from '../lib/errors';
  *   due_to?: string,
  *   q?: string,
  *   overdue?: boolean|0|1|string,
+ *   debtor_id?: number,
+ *   collectible?: boolean|0|1|string,
  *   page?: number,
  *   per_page?: number,
  *   enabled?: boolean,
