@@ -22,6 +22,8 @@ const Q_DEBOUNCE_MS = 300;
  * @property {PeriodPresetId} preset
  * @property {''|'credit'|'debit'} type
  * @property {number|''} category_id
+ * @property {number|''} credit_card_id
+ * @property {number|''} debtor_id
  * @property {string} q
  * @property {'day'|'month'} group_by
  * @property {number} page
@@ -94,6 +96,12 @@ function parseFiltersFromParams(params) {
     const type = typeRaw === 'credit' || typeRaw === 'debit' ? typeRaw : '';
     const categoryRaw = params.get('category_id') || '';
     const category_id = categoryRaw && /^\d+$/.test(categoryRaw) ? Number(categoryRaw) : '';
+    const creditCardRaw = params.get('credit_card_id') || '';
+    const credit_card_id = creditCardRaw && /^\d+$/.test(creditCardRaw)
+        ? Number(creditCardRaw)
+        : '';
+    const debtorRaw = params.get('debtor_id') || '';
+    const debtor_id = debtorRaw && /^\d+$/.test(debtorRaw) ? Number(debtorRaw) : '';
     const q = params.get('q') || '';
     const pageRaw = Number(params.get('page') || 1);
     const page = Number.isFinite(pageRaw) && pageRaw >= 1 ? pageRaw : 1;
@@ -110,6 +118,8 @@ function parseFiltersFromParams(params) {
         preset,
         type,
         category_id,
+        credit_card_id,
+        debtor_id,
         q,
         group_by: resolveGroupBy(from, to),
         page,
@@ -146,6 +156,14 @@ function filtersToSearchParams(filters) {
         params.set('category_id', String(filters.category_id));
     }
 
+    if (filters.credit_card_id !== '' && filters.credit_card_id != null) {
+        params.set('credit_card_id', String(filters.credit_card_id));
+    }
+
+    if (filters.debtor_id !== '' && filters.debtor_id != null) {
+        params.set('debtor_id', String(filters.debtor_id));
+    }
+
     if (filters.q) {
         params.set('q', filters.q);
     }
@@ -177,6 +195,8 @@ function filtersToSearchParams(filters) {
  * | `group_by` | `day` \| `month` | Só enviado à API analytics (não na URL); ≤45 dias → `day` |
  * | `type` | `credit` \| `debit` | Opcional |
  * | `category_id` | int | Opcional |
+ * | `credit_card_id` | int | Opcional (feature credit_cards) |
+ * | `debtor_id` | int | Opcional (feature loans) |
  * | `q` | string ≤120 | Debounce 300ms em `apiFilters` |
  * | `page` / `sort` / `direction` | pagination | Só listagem |
  *

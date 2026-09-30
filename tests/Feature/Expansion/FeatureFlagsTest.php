@@ -69,4 +69,72 @@ class FeatureFlagsTest extends TestCase
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['statement_kind']);
     }
+
+    public function test_etapa_h_features_gate_named_abilities(): void
+    {
+        config([
+            'aura.features.credit_cards' => true,
+            'aura.features.loans' => false,
+            'aura.features.notifications' => true,
+        ]);
+
+        $admin = User::factory()->admin()->create();
+
+        $this->assertTrue(Gate::forUser($admin)->allows('credit_cards.manage'));
+        $this->assertFalse(Gate::forUser($admin)->allows('loans.manage'));
+        $this->assertTrue(Gate::forUser($admin)->allows('notifications.read'));
+
+        $response = $this->actingAs($admin)->getJson('/api/user');
+
+        $response->assertOk()
+            ->assertJsonPath('user.features.credit_cards', true)
+            ->assertJsonPath('user.features.loans', false)
+            ->assertJsonPath('user.features.notifications', true);
+
+        $abilities = $response->json('user.abilities');
+        $this->assertContains('credit_cards.manage', $abilities);
+        $this->assertNotContains('loans.manage', $abilities);
+        $this->assertContains('notifications.read', $abilities);
+    }
+
+    public function test_etapa_h_http_routes_return_feature_disabled(): void
+    {
+        config([
+            'aura.features.credit_cards' => false,
+            'aura.features.loans' => false,
+            'aura.features.notifications' => false,
+        ]);
+
+        $admin = User::factory()->admin()->create();
+
+        $this->actingAs($admin)
+            ->postJson('/api/credit-cards', [
+                'name' => 'X',
+                'closing_day' => 1,
+                'due_day' => 10,
+            ])
+            ->assertForbidden()
+            ->assertJsonPath('error_code', 'feature_disabled')
+            ->assertJsonPath('feature', 'credit_cards');
+
+        $this->actingAs($admin)
+            ->postJson('/api/loans', [
+                'debtor_name' => 'Y',
+                'kind' => 'cash',
+                'amount' => '10.00',
+                'lent_on' => '2026-09-01',
+                'due_on' => '2026-09-10',
+            ])
+            ->assertForbidden()
+            ->assertJsonPath('error_code', 'feature_disabled')
+            ->assertJsonPath('feature', 'loans');
+
+        $this->actingAs($admin)
+            ->getJson('/api/notifications')
+            ->assertForbidden()
+            ->assertJsonPath('error_code', 'feature_disabled')
+            ->assertJsonPath('feature', 'notifications');
+
+        $this->assertFalse(Gate::forUser($admin)->allows('notifications.read'));
+    }
 }

@@ -26,6 +26,7 @@ final class ManualTransactionService
         private readonly UsageLimitService $usageLimits,
         private readonly GoalProgressService $goalProgress,
         private readonly AliasResolutionService $aliases,
+        private readonly DebtorService $debtors,
     ) {}
 
     /**
@@ -35,11 +36,15 @@ final class ManualTransactionService
      *     type: string,
      *     description: string,
      *     category_id?: int|null,
-     *     notes?: string|null
+     *     notes?: string|null,
+     *     credit_card_id?: int|null,
+     *     loan_id?: int|null,
+     *     debtor_id?: int|null
      * }  $data
      */
     public function create(User $user, array $data): Transaction
     {
+        $data = $this->resolveDebtorLoanLink($user, $data);
         $resolved = $this->resolveWithAlias($user, $data);
         $hash = $this->hashForManual($user, [
             'occurred_on' => $resolved['occurred_on'],
@@ -49,7 +54,7 @@ final class ManualTransactionService
         ]);
         $this->assertUniqueForUser($user, $hash);
 
-        $transaction = DB::transaction(function () use ($user, $resolved, $hash): Transaction {
+        $transaction = DB::transaction(function () use ($user, $resolved, $hash, $data): Transaction {
             $payload = [
                 'origin' => 'manual',
                 'notes' => $resolved['notes'],
@@ -64,6 +69,8 @@ final class ManualTransactionService
                 'statement_import_id' => null,
                 'source_kind' => TransactionSourceKind::Manual,
                 'category_id' => $resolved['category_id'],
+                'credit_card_id' => $data['credit_card_id'] ?? null,
+                'loan_id' => $data['loan_id'] ?? null,
                 'external_id' => null,
                 'occurred_on' => $resolved['occurred_on'],
                 'description' => $resolved['description'],
@@ -77,7 +84,7 @@ final class ManualTransactionService
         $this->usageLimits->increment($user, UsageLimitService::METRIC_MANUAL_TRANSACTIONS);
         $this->goalProgress->touchFromTransaction($transaction);
 
-        return $transaction->load('category');
+        return $transaction->load(['category', 'creditCard:id,name', 'loan:id,debtor_name,status']);
     }
 
     /**
@@ -85,6 +92,8 @@ final class ManualTransactionService
      */
     public function update(User $actor, Transaction $transaction, array $data): Transaction
     {
+        $data = $this->resolveDebtorLoanLink($actor, $data, $transaction);
+
         if ($transaction->source_kind === TransactionSourceKind::Import) {
             $updated = $this->updateImported($actor, $transaction, $data);
         } else {
@@ -161,9 +170,18 @@ final class ManualTransactionService
             'category_id' => $resolved['category_id'],
             'unique_hash' => $hash,
             'raw_payload' => $payload,
-        ])->save();
+        ]);
 
-        return $transaction->fresh()->load('category');
+        if (array_key_exists('credit_card_id', $data)) {
+            $transaction->credit_card_id = $data['credit_card_id'];
+        }
+        if (array_key_exists('loan_id', $data)) {
+            $transaction->loan_id = $data['loan_id'];
+        }
+
+        $transaction->save();
+
+        return $transaction->fresh()->load(['category', 'creditCard:id,name', 'loan:id,debtor_name,status']);
     }
 
     /**
@@ -215,7 +233,7 @@ final class ManualTransactionService
      */
     private function updateImported(User $actor, Transaction $transaction, array $data): Transaction
     {
-        $allowed = ['category_id', 'notes'];
+        $allowed = ['category_id', 'notes', 'credit_card_id', 'loan_id', 'debtor_id'];
 
         if ($actor->isAdmin()) {
             $allowed = array_merge($allowed, [
@@ -237,6 +255,14 @@ final class ManualTransactionService
 
         if (array_key_exists('category_id', $data)) {
             $transaction->category_id = $data['category_id'];
+        }
+
+        if (array_key_exists('credit_card_id', $data)) {
+            $transaction->credit_card_id = $data['credit_card_id'];
+        }
+
+        if (array_key_exists('loan_id', $data)) {
+            $transaction->loan_id = $data['loan_id'];
         }
 
         if (array_key_exists('notes', $data)) {
@@ -275,7 +301,7 @@ final class ManualTransactionService
 
         $transaction->save();
 
-        return $transaction->fresh()->load('category');
+        return $transaction->fresh()->load(['category', 'creditCard:id,name', 'loan:id,debtor_name,status']);
     }
 
     /**
@@ -308,5 +334,49 @@ final class ManualTransactionService
                 'description' => 'Já existe um lançamento idêntico para este usuário neste período.',
             ]);
         }
+    }
+
+    /**
+     * When debtor_id is set without loan_id, reuse an open loan or create one from the tx.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function resolveDebtorLoanLink(User $user, array $data, ?Transaction $existing = null): array
+    {
+        $hasDebtor = array_key_exists('debtor_id', $data) && $data['debtor_id'] !== null && $data['debtor_id'] !== '';
+        $hasLoan = array_key_exists('loan_id', $data)
+            ? ($data['loan_id'] !== null && $data['loan_id'] !== '')
+            : ($existing?->loan_id !== null);
+
+        if (! $hasDebtor || $hasLoan) {
+            return $data;
+        }
+
+        $debtor = $this->debtors->resolve($user, (int) $data['debtor_id'], null);
+
+        $amount = $data['amount'] ?? $existing?->amount;
+        $occurredOn = $data['occurred_on'] ?? $existing?->occurred_on?->format('Y-m-d');
+        $description = $data['description'] ?? $existing?->description;
+        $creditCardId = array_key_exists('credit_card_id', $data)
+            ? $data['credit_card_id']
+            : $existing?->credit_card_id;
+
+        if ($amount === null || $occurredOn === null) {
+            throw ValidationException::withMessages([
+                'debtor_id' => ['Não foi possível vincular a pessoa sem valor e data do lançamento.'],
+            ]);
+        }
+
+        $loan = $this->debtors->findOpenLoanOrCreateFromTransaction($user, $debtor, [
+            'amount' => $amount,
+            'occurred_on' => (string) $occurredOn,
+            'credit_card_id' => $creditCardId,
+            'description' => is_string($description) ? $description : null,
+        ]);
+
+        $data['loan_id'] = (int) $loan->id;
+
+        return $data;
     }
 }

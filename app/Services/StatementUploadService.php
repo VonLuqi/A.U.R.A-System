@@ -45,6 +45,7 @@ final class StatementUploadService
         private readonly StatementParserResolver $parsers,
         private readonly UsageLimitService $usageLimits,
         private readonly AliasResolutionService $aliases,
+        private readonly CreditCardService $creditCards,
     ) {}
 
     public function handle(
@@ -52,6 +53,7 @@ final class StatementUploadService
         UploadedFile $file,
         string $source = 'nubank',
         ?string $statementKind = null,
+        ?int $creditCardId = null,
     ): UploadSummary {
         $detected = StatementFormatDetector::detectForImport($file, $source, $statementKind);
         $format = $detected['format'];
@@ -82,7 +84,7 @@ final class StatementUploadService
             $parseResult = $this->parsers->resolve($format, $source)->parse($absolutePath);
 
             // Step 6–7: persist atomically + mark completed
-            $summary = $this->persistParsed($import, $parseResult, $source);
+            $summary = $this->persistParsed($import, $parseResult, $source, $creditCardId);
 
             $this->usageLimits->increment($user, UsageLimitService::METRIC_UPLOADS);
 
@@ -113,11 +115,21 @@ final class StatementUploadService
         }
     }
 
-    private function persistParsed(StatementImport $import, ParseResult $parseResult, string $source): UploadSummary
-    {
+    private function persistParsed(
+        StatementImport $import,
+        ParseResult $parseResult,
+        string $source,
+        ?int $creditCardOverrideId = null,
+    ): UploadSummary {
         $user = User::query()->findOrFail((int) $import->user_id);
         $rowErrors = $parseResult->rowErrors;
-        $prepared = $this->prepareRows($import, $user, $parseResult->transactions, $source);
+        $prepared = $this->prepareRows(
+            $import,
+            $user,
+            $parseResult->transactions,
+            $source,
+            $creditCardOverrideId,
+        );
 
         $hashes = array_column($prepared['rows'], 'unique_hash');
         $existing = $hashes === []
@@ -175,11 +187,17 @@ final class StatementUploadService
         User $user,
         array $transactions,
         string $source,
+        ?int $creditCardOverrideId = null,
     ): array {
         $now = now();
         $rows = [];
         $seen = [];
         $intraBatchSkips = 0;
+
+        $creditCardId = null;
+        if ($import->format === StatementImport::FORMAT_CSV_CREDIT_CARD) {
+            $creditCardId = $this->creditCards->resolveForImport($user, $creditCardOverrideId);
+        }
 
         foreach ($transactions as $tx) {
             $originalDescription = $tx->description;
@@ -217,6 +235,7 @@ final class StatementUploadService
                 'statement_import_id' => $import->id,
                 'source_kind' => TransactionSourceKind::Import->value,
                 'category_id' => $categoryId,
+                'credit_card_id' => $creditCardId,
                 'external_id' => $tx->externalId,
                 'occurred_on' => $tx->occurredOn,
                 'description' => $description,

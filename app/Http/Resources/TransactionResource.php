@@ -43,6 +43,28 @@ class TransactionResource extends JsonResource
                 fn () => (new CategoryResource($this->category))->resolve(),
                 null,
             ),
+            'credit_card' => $this->when(
+                $this->relationLoaded('creditCard') && $this->creditCard !== null,
+                fn () => [
+                    'id' => (int) $this->creditCard->id,
+                    'name' => (string) $this->creditCard->name,
+                ],
+                null,
+            ),
+            'loan' => $this->when(
+                $this->relationLoaded('loan') && $this->loan !== null,
+                fn () => [
+                    'id' => (int) $this->loan->id,
+                    'debtor_id' => $this->loan->debtor_id !== null
+                        ? (int) $this->loan->debtor_id
+                        : null,
+                    'debtor_name' => (string) $this->loan->debtor_name,
+                    'status' => $this->loan->status instanceof \BackedEnum
+                        ? $this->loan->status->value
+                        : (string) $this->loan->status,
+                ],
+                null,
+            ),
             'user_id' => (int) $this->user_id,
             'source_kind' => $this->source_kind instanceof \BackedEnum
                 ? $this->source_kind->value

@@ -15,9 +15,10 @@ const TONE_CLASS = {
  *   value: string|number,
  *   tone?: 'positive'|'danger'|'primary'|'secondary',
  *   icon?: import('react').ReactNode,
+ *   hint?: string|null,
  * }} props
  */
-export default function MetricCard({ label, value, tone = 'primary', icon = null }) {
+export default function MetricCard({ label, value, tone = 'primary', icon = null, hint = null }) {
     return (
         <Card className="relative flex flex-col gap-3">
             {icon ? (
@@ -34,6 +35,9 @@ export default function MetricCard({ label, value, tone = 'primary', icon = null
             >
                 {value}
             </p>
+            {hint ? (
+                <p className="text-caption text-ink-muted">{hint}</p>
+            ) : null}
         </Card>
     );
 }

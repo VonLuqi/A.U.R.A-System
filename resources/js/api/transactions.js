@@ -19,11 +19,26 @@
  *
  * @typedef {{
  *   id: number,
+ *   name: string,
+ * }} TransactionCreditCard
+ *
+ * @typedef {{
+ *   id: number,
+ *   debtor_name: string,
+ *   status?: string,
+ * }} TransactionLoan
+ *
+ * @typedef {{
+ *   id: number,
  *   occurred_on: string,
  *   description: string,
+ *   original_description?: string|null,
+ *   alias?: { id: number, display_name: string }|null,
  *   amount: string,
  *   type: 'credit'|'debit'|string,
  *   category: TransactionCategory|null,
+ *   credit_card?: TransactionCreditCard|null,
+ *   loan?: TransactionLoan|null,
  *   user_id: number,
  *   source_kind: 'manual'|'import'|string,
  *   statement_import_id: number|null,
@@ -52,6 +67,8 @@
  *   description: string,
  *   category_id?: number|null,
  *   notes?: string|null,
+ *   credit_card_id?: number|null,
+ *   loan_id?: number|null,
  * }} TransactionWritePayload
  */
 import api from './client';
@@ -79,13 +96,13 @@ export async function createTransaction(payload) {
 
 /**
  * @param {number|string} id
- * @param {Partial<TransactionWritePayload>} payload
- * @returns {Promise<Transaction>}
+ * @param {Partial<TransactionWritePayload> & { apply_category_to_matching?: boolean }} payload
+ * @returns {Promise<{ data: Transaction, retroactive?: { scanned: number, updated: number, limit: number } }>}
  */
 export async function updateTransaction(id, payload) {
     const { data } = await api.patch(`/api/transactions/${id}`, payload);
 
-    return data.data;
+    return data;
 }
 
 /**

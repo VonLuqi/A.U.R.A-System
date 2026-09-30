@@ -25,6 +25,8 @@ class RoleLimitsSeeder extends Seeder
                     'max_manual_transactions' => (int) ($limits['max_manual_transactions'] ?? 0),
                     'max_date_range_days' => (int) ($limits['max_date_range_days'] ?? 0),
                     'max_goals' => (int) ($limits['max_goals'] ?? 0),
+                    'max_credit_cards' => (int) ($limits['max_credit_cards'] ?? 0),
+                    'max_loans' => (int) ($limits['max_loans'] ?? 0),
                 ]
             );
         }

@@ -26,10 +26,14 @@ class RoleAndLimitsSeederTest extends TestCase
         $this->assertSame(20, $visitor->max_manual_transactions);
         $this->assertSame(90, $visitor->max_date_range_days);
         $this->assertSame(3, $visitor->max_goals);
+        $this->assertSame(3, $visitor->max_credit_cards);
+        $this->assertSame(5, $visitor->max_loans);
 
         $admin = RoleLimit::query()->where('role', UserRole::Admin)->first();
         $this->assertNotNull($admin);
         $this->assertTrue(RoleLimit::isUnlimited($admin->max_uploads));
+        $this->assertTrue(RoleLimit::isUnlimited($admin->max_credit_cards));
+        $this->assertTrue(RoleLimit::isUnlimited($admin->max_loans));
     }
 
     public function test_role_limits_seeder_is_idempotent(): void

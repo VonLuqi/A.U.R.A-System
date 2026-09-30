@@ -87,6 +87,42 @@ export default {
                 10: 'var(--space-10)',
                 12: 'var(--space-12)',
             },
+            // Etapa I §5.2 — aliases Tailwind; keyframes canônicos em aura-loader.css
+            keyframes: {
+                'aura-pulse': {
+                    '0%, 100%': { transform: 'scale(1)', opacity: '0.35' },
+                    '50%': { transform: 'scale(1.14)', opacity: '0.95' },
+                },
+                'aura-glow': {
+                    '0%, 100%': {
+                        transform: 'scale(1)',
+                        opacity: '0.55',
+                        boxShadow:
+                            '0 0 10px 2px rgba(220, 207, 255, 0.22), 0 0 28px 8px rgba(220, 207, 255, 0.10)',
+                    },
+                    '50%': {
+                        transform: 'scale(1.08)',
+                        opacity: '1',
+                        boxShadow:
+                            '0 0 18px 4px rgba(220, 207, 255, 0.55), 0 0 48px 16px rgba(220, 207, 255, 0.22)',
+                    },
+                },
+                'aura-breathe': {
+                    '0%, 100%': {
+                        opacity: '0.75',
+                        transform: 'scale(0.94)',
+                    },
+                    '50%': {
+                        opacity: '1',
+                        transform: 'scale(1.06)',
+                    },
+                },
+            },
+            animation: {
+                'aura-pulse': 'aura-pulse 2s ease-in-out infinite',
+                'aura-glow': 'aura-glow 2.2s ease-in-out infinite',
+                'aura-breathe': 'aura-breathe 2.6s ease-in-out infinite',
+            },
         },
     },
     plugins: [],

@@ -1,15 +1,23 @@
 ﻿import { forwardRef } from 'react';
 import { cx } from '../../lib/cx';
+import AuraMark from './AuraMark';
 
 /**
- * BrandMark — Design System (Etapa D §5.4).
- * Accent brand + wordmark Aura. Sizes: sm | lg.
+ * BrandMark — Design System §0.1 / Etapa I §4.2.
+ * Mark SVG “aura abstrata” + wordmark tipográfico Aura.
+ * Sizes: sm (nav) | lg (Login / splash). Prop opcional `animated` (§5).
+ *
+ * @param {{
+ *   size?: 'sm'|'lg',
+ *   animated?: boolean,
+ *   className?: string,
+ * }} props
  */
 const BrandMark = forwardRef(function BrandMark(
-    { size = 'sm', className = '', ...props },
+    { size = 'sm', animated = false, className = '', ...props },
     ref,
 ) {
-    const markSize = size === 'lg' ? 'h-4 w-4' : 'h-3 w-3';
+    const markSize = size === 'lg' ? 'h-10 w-10' : 'h-5 w-5';
     const wordmarkClass =
         size === 'lg' ? 'text-body-lg font-bold tracking-tight sm:text-h1' : 'text-body-lg font-bold';
 
@@ -19,10 +27,7 @@ const BrandMark = forwardRef(function BrandMark(
             className={cx('inline-flex items-center gap-3', className)}
             {...props}
         >
-            <span
-                aria-hidden
-                className={cx('inline-block shrink-0 rounded-full bg-brand', markSize)}
-            />
+            <AuraMark className={markSize} animated={animated} />
             <span className={cx(wordmarkClass, 'text-ink')}>Aura</span>
         </div>
     );

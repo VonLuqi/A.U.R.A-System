@@ -3,7 +3,10 @@
 namespace App\Providers;
 
 use App\Enums\UserRole;
+use App\Models\CreditCard;
+use App\Models\Debtor;
 use App\Models\Goal;
+use App\Models\Loan;
 use App\Models\StatementImport;
 use App\Models\Transaction;
 use App\Models\TransactionAlias;
@@ -11,8 +14,10 @@ use App\Models\User;
 use App\Parsers\NubankCsvParser;
 use App\Parsers\OfxParser;
 use App\Parsers\StatementParserResolver;
+use App\Policies\NotificationPolicy;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
@@ -40,13 +45,23 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureGates();
+        $this->configurePolicies();
         $this->configureRateLimiting();
         $this->configureRouteBindings();
     }
 
     /**
-     * PLAN_EXPANSAO §2.1 — ability matrix from config/aura.php.
-     * Admin bypass via Gate::before, still respecting is_active.
+     * Policies for vendor / non-App\Models Eloquent types (Etapa H §5).
+     */
+    private function configurePolicies(): void
+    {
+        Gate::policy(DatabaseNotification::class, NotificationPolicy::class);
+    }
+
+    /**
+     * PLAN_EXPANSAO §2.1 / PLAN_CARTOES_EMPRESTIMOS §0 — ability matrix from
+     * config/aura.php (includes credit_cards.manage, loans.manage, notifications.read).
+     * Admin bypass via Gate::before, still respecting is_active + feature flags.
      */
     private function configureGates(): void
     {
@@ -154,6 +169,36 @@ class AppServiceProvider extends ServiceProvider
             abort_if($userId === null, 401);
 
             return TransactionAlias::query()
+                ->whereKey($value)
+                ->where('user_id', $userId)
+                ->firstOrFail();
+        });
+
+        Route::bind('credit_card', function (string $value): CreditCard {
+            $userId = auth()->id();
+            abort_if($userId === null, 401);
+
+            return CreditCard::query()
+                ->whereKey($value)
+                ->where('user_id', $userId)
+                ->firstOrFail();
+        });
+
+        Route::bind('loan', function (string $value): Loan {
+            $userId = auth()->id();
+            abort_if($userId === null, 401);
+
+            return Loan::query()
+                ->whereKey($value)
+                ->where('user_id', $userId)
+                ->firstOrFail();
+        });
+
+        Route::bind('debtor', function (string $value): Debtor {
+            $userId = auth()->id();
+            abort_if($userId === null, 401);
+
+            return Debtor::query()
                 ->whereKey($value)
                 ->where('user_id', $userId)
                 ->firstOrFail();

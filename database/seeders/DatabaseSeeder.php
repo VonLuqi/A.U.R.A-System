@@ -17,6 +17,7 @@ class DatabaseSeeder extends Seeder
             DemoRoleUsersSeeder::class, // no-op outside local/development/testing
             CategorySeeder::class,
             DemoTransactionSeeder::class, // no-op outside local/development/testing
+            DemoCreditCardsAndLoansSeeder::class, // no-op outside local/development/testing
         ]);
     }
 }

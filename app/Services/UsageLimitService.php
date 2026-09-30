@@ -112,7 +112,9 @@ final class UsageLimitService
      *     max_manual_transactions: int,
      *     max_date_range_days: int,
      *     max_goals: int,
-     *     max_aliases: int
+     *     max_aliases: int,
+     *     max_credit_cards: int,
+     *     max_loans: int
      * }
      */
     public function limitsSnapshot(User $user): array
@@ -127,6 +129,8 @@ final class UsageLimitService
             'max_date_range_days' => (int) ($fromDb?->max_date_range_days ?? $fromConfig['max_date_range_days'] ?? 0),
             'max_goals' => (int) ($fromDb?->max_goals ?? $fromConfig['max_goals'] ?? 0),
             'max_aliases' => (int) ($fromConfig['max_aliases'] ?? 0),
+            'max_credit_cards' => (int) ($fromDb?->max_credit_cards ?? $fromConfig['max_credit_cards'] ?? 0),
+            'max_loans' => (int) ($fromDb?->max_loans ?? $fromConfig['max_loans'] ?? 0),
         ];
     }
 
@@ -211,7 +215,9 @@ final class UsageLimitService
      *     max_manual_transactions: int,
      *     max_date_range_days: int,
      *     max_goals: int,
-     *     max_aliases: int
+     *     max_aliases: int,
+     *     max_credit_cards: int,
+     *     max_loans: int
      * }
      */
     public function roleLimitsBag(User $user): array
@@ -293,6 +299,83 @@ final class UsageLimitService
         }
 
         return max(0, $limit - $this->goalsUsed($user));
+    }
+
+    /**
+     * Stock limit on credit cards (Etapa H §1.5). `0` = unlimited.
+     * Enforced in controllers (not `quota:*` middleware — same pattern as goals/aliases).
+     *
+     * @throws UsageLimitExceededException
+     */
+    public function assertCanCreateCreditCard(User $user): void
+    {
+        $limit = (int) $this->roleLimitsBag($user)['max_credit_cards'];
+        if (RoleLimit::isUnlimited($limit)) {
+            return;
+        }
+
+        $used = $this->creditCardsUsed($user);
+        if ($used >= $limit) {
+            throw new UsageLimitExceededException(
+                metric: 'credit_cards',
+                limit: $limit,
+                used: $used,
+                message: 'Limite de cartões de crédito atingido para o seu perfil.',
+            );
+        }
+    }
+
+    public function creditCardsUsed(User $user): int
+    {
+        return (int) $user->creditCards()->count();
+    }
+
+    public function creditCardsRemaining(User $user): ?int
+    {
+        $limit = (int) $this->roleLimitsBag($user)['max_credit_cards'];
+        if (RoleLimit::isUnlimited($limit)) {
+            return null;
+        }
+
+        return max(0, $limit - $this->creditCardsUsed($user));
+    }
+
+    /**
+     * Stock limit on loans (Etapa H §1.5). `0` = unlimited.
+     *
+     * @throws UsageLimitExceededException
+     */
+    public function assertCanCreateLoan(User $user): void
+    {
+        $limit = (int) $this->roleLimitsBag($user)['max_loans'];
+        if (RoleLimit::isUnlimited($limit)) {
+            return;
+        }
+
+        $used = $this->loansUsed($user);
+        if ($used >= $limit) {
+            throw new UsageLimitExceededException(
+                metric: 'loans',
+                limit: $limit,
+                used: $used,
+                message: 'Limite de empréstimos/cobranças atingido para o seu perfil.',
+            );
+        }
+    }
+
+    public function loansUsed(User $user): int
+    {
+        return (int) $user->loans()->count();
+    }
+
+    public function loansRemaining(User $user): ?int
+    {
+        $limit = (int) $this->roleLimitsBag($user)['max_loans'];
+        if (RoleLimit::isUnlimited($limit)) {
+            return null;
+        }
+
+        return max(0, $limit - $this->loansUsed($user));
     }
 
     public function usedFor(User $user, string $metric): int

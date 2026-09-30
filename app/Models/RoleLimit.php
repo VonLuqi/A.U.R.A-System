@@ -16,6 +16,8 @@ class RoleLimit extends Model
         'max_manual_transactions',
         'max_date_range_days',
         'max_goals',
+        'max_credit_cards',
+        'max_loans',
     ];
 
     /**
@@ -29,6 +31,8 @@ class RoleLimit extends Model
             'max_manual_transactions' => 'integer',
             'max_date_range_days' => 'integer',
             'max_goals' => 'integer',
+            'max_credit_cards' => 'integer',
+            'max_loans' => 'integer',
         ];
     }
 

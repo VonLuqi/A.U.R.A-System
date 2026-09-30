@@ -125,6 +125,85 @@ export function formatIsoDate(date) {
 }
 
 /**
+ * ISO → display pt-BR (`2026-09-27` → `27/09/2026`).
+ * @param {string|null|undefined} iso YYYY-MM-DD
+ * @returns {string}
+ */
+export function formatBrDate(iso) {
+    const date = parseIsoDate(iso);
+
+    if (!date) {
+        return '';
+    }
+
+    return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
+}
+
+/**
+ * Aceita `dd/mm/aaaa`, `ddmmaaaa` ou ISO `YYYY-MM-DD`.
+ * @param {string|null|undefined} raw
+ * @returns {string|null} YYYY-MM-DD ou null se inválido
+ */
+export function parseBrDate(raw) {
+    const trimmed = String(raw ?? '').trim();
+
+    if (!trimmed) {
+        return null;
+    }
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+        return parseIsoDate(trimmed) ? trimmed : null;
+    }
+
+    const digits = trimmed.replace(/\D/g, '');
+
+    if (digits.length !== 8) {
+        return null;
+    }
+
+    const day = Number.parseInt(digits.slice(0, 2), 10);
+    const month = Number.parseInt(digits.slice(2, 4), 10);
+    const year = Number.parseInt(digits.slice(4, 8), 10);
+
+    if (year < 1000 || month < 1 || month > 12 || day < 1 || day > 31) {
+        return null;
+    }
+
+    const date = new Date(year, month - 1, day);
+
+    if (
+        date.getFullYear() !== year ||
+        date.getMonth() !== month - 1 ||
+        date.getDate() !== day
+    ) {
+        return null;
+    }
+
+    return toIsoDate(date);
+}
+
+/**
+ * Máscara progressiva enquanto digita (`2709` → `27/09`).
+ * @param {string} raw
+ * @returns {string}
+ */
+export function maskBrDateInput(raw) {
+    const digits = String(raw ?? '')
+        .replace(/\D/g, '')
+        .slice(0, 8);
+
+    if (digits.length <= 2) {
+        return digits;
+    }
+
+    if (digits.length <= 4) {
+        return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    }
+
+    return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
+/**
  * Label PT-BR curto para intervalo (ex.: `01/08/2026 – 31/08/2026`).
  * @param {string} from
  * @param {string} to

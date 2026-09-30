@@ -24,6 +24,9 @@ class ApiRouteInventoryTest extends TestCase
             ['POST', 'api/login', 'api.login'],
             ['POST', 'api/logout', 'api.logout'],
             ['GET', 'api/user', 'api.user'],
+            ['PATCH', 'api/profile', 'api.profile.update'],
+            ['POST', 'api/profile/avatar', 'api.profile.avatar.store'],
+            ['DELETE', 'api/profile/avatar', 'api.profile.avatar.destroy'],
             ['POST', 'api/statements/upload', 'api.statements.upload'],
             ['GET', 'api/statements', 'api.statements.index'],
             ['GET', 'api/statements/{statementImport}', 'api.statements.show'],
@@ -48,6 +51,29 @@ class ApiRouteInventoryTest extends TestCase
             ['PATCH', 'api/goals/{goal}', 'api.goals.update'],
             ['DELETE', 'api/goals/{goal}', 'api.goals.destroy'],
             ['POST', 'api/goals/{goal}/recalculate', 'api.goals.recalculate'],
+            ['GET', 'api/credit-cards', 'api.credit-cards.index'],
+            ['POST', 'api/credit-cards', 'api.credit-cards.store'],
+            ['GET', 'api/credit-cards/{credit_card}', 'api.credit-cards.show'],
+            ['PATCH', 'api/credit-cards/{credit_card}', 'api.credit-cards.update'],
+            ['DELETE', 'api/credit-cards/{credit_card}', 'api.credit-cards.destroy'],
+            ['POST', 'api/credit-cards/{credit_card}/link-transactions', 'api.credit-cards.link-transactions'],
+            ['GET', 'api/loans', 'api.loans.index'],
+            ['POST', 'api/loans', 'api.loans.store'],
+            ['GET', 'api/loans/{loan}', 'api.loans.show'],
+            ['PATCH', 'api/loans/{loan}', 'api.loans.update'],
+            ['DELETE', 'api/loans/{loan}', 'api.loans.destroy'],
+            ['POST', 'api/loans/{loan}/mark-paid', 'api.loans.mark-paid'],
+            ['POST', 'api/loans/{loan}/cancel', 'api.loans.cancel'],
+            ['GET', 'api/debtors', 'api.debtors.index'],
+            ['POST', 'api/debtors', 'api.debtors.store'],
+            ['GET', 'api/debtors/{debtor}', 'api.debtors.show'],
+            ['PATCH', 'api/debtors/{debtor}', 'api.debtors.update'],
+            ['POST', 'api/debtors/{debtor}/link-transactions', 'api.debtors.link-transactions'],
+            ['DELETE', 'api/debtors/{debtor}', 'api.debtors.destroy'],
+            ['GET', 'api/notifications', 'api.notifications.index'],
+            ['GET', 'api/notifications/unread-count', 'api.notifications.unread-count'],
+            ['POST', 'api/notifications/read-all', 'api.notifications.read-all'],
+            ['POST', 'api/notifications/{notification}/read', 'api.notifications.read'],
             ['GET', 'api/users', 'api.users.index'],
             ['POST', 'api/users', 'api.users.store'],
             ['GET', 'api/users/{user}', 'api.users.show'],
@@ -76,8 +102,14 @@ class ApiRouteInventoryTest extends TestCase
         $this->getJson('/api/analytics/dashboard')->assertUnauthorized();
         $this->getJson('/api/categories')->assertUnauthorized();
         $this->getJson('/api/goals')->assertUnauthorized();
+        $this->getJson('/api/credit-cards')->assertUnauthorized();
+        $this->getJson('/api/loans')->assertUnauthorized();
+        $this->getJson('/api/notifications')->assertUnauthorized();
         $this->postJson('/api/statements/upload')->assertUnauthorized();
         $this->getJson('/api/users')->assertUnauthorized();
+        $this->patchJson('/api/profile')->assertUnauthorized();
+        $this->postJson('/api/profile/avatar')->assertUnauthorized();
+        $this->deleteJson('/api/profile/avatar')->assertUnauthorized();
     }
 
     public function test_authenticated_inventory_routes_are_implemented(): void

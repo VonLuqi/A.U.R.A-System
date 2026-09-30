@@ -15,6 +15,11 @@ use Illuminate\Database\Eloquent\Builder;
  *     category_id?: ?int,
  *     q?: ?string,
  *     statement_import_id?: ?int,
+ *     credit_card_id?: ?int,
+ *     loan_id?: ?int,
+ *     debtor_id?: ?int,
+ *     has_loan?: bool|null,
+ *     has_credit_card?: bool|null,
  *     sort?: string,
  *     direction?: string,
  *     group_by?: string
@@ -61,6 +66,35 @@ trait AppliesTransactionFilters
         if ($importId !== null) {
             // Combined with forUser()/user_id: foreign import ids simply yield empty sets.
             $query->where('transactions.statement_import_id', (int) $importId);
+        }
+
+        $creditCardId = $filters['credit_card_id'] ?? null;
+        if ($creditCardId !== null) {
+            $query->where('transactions.credit_card_id', (int) $creditCardId);
+        }
+
+        $loanId = $filters['loan_id'] ?? null;
+        if ($loanId !== null) {
+            $query->where('transactions.loan_id', (int) $loanId);
+        }
+
+        $debtorId = $filters['debtor_id'] ?? null;
+        if ($debtorId !== null) {
+            $query->whereHas('loan', function (Builder $loanQuery) use ($debtorId): void {
+                $loanQuery->where('loans.debtor_id', (int) $debtorId);
+            });
+        }
+
+        if (! empty($filters['has_loan'])) {
+            $query->whereNotNull('transactions.loan_id');
+        }
+
+        if (array_key_exists('has_credit_card', $filters) && $filters['has_credit_card'] !== null) {
+            if ($filters['has_credit_card']) {
+                $query->whereNotNull('transactions.credit_card_id');
+            } else {
+                $query->whereNull('transactions.credit_card_id');
+            }
         }
 
         return $query;

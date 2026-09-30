@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Storage;
 
 class User extends Authenticatable
 {
@@ -23,6 +24,7 @@ class User extends Authenticatable
     protected $fillable = [
         'name',
         'email',
+        'avatar_path',
         'password',
         'role',
         'is_active',
@@ -39,6 +41,7 @@ class User extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
+        'avatar_path',
     ];
 
     /**
@@ -57,6 +60,19 @@ class User extends Authenticatable
             'manual_transactions_used' => 'integer',
             'quota_period_starts_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Public URL for the profile avatar on disk `public`, or null when unset.
+     * Path stored in `avatar_path` is relative (e.g. avatars/{id}/{uuid}.webp).
+     */
+    public function avatarUrl(): ?string
+    {
+        if ($this->avatar_path === null || $this->avatar_path === '') {
+            return null;
+        }
+
+        return Storage::disk('public')->url($this->avatar_path);
     }
 
     public function isAdmin(): bool
@@ -123,6 +139,22 @@ class User extends Authenticatable
     public function transactionAliases(): HasMany
     {
         return $this->hasMany(TransactionAlias::class);
+    }
+
+    /**
+     * @return HasMany<CreditCard, $this>
+     */
+    public function creditCards(): HasMany
+    {
+        return $this->hasMany(CreditCard::class);
+    }
+
+    /**
+     * @return HasMany<Loan, $this>
+     */
+    public function loans(): HasMany
+    {
+        return $this->hasMany(Loan::class);
     }
 
     /**

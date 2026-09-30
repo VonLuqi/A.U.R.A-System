@@ -59,6 +59,11 @@ class IndexTransactionsRequest extends FormRequest
             ],
             'type' => ['nullable', 'string', Rule::in(['credit', 'debit'])],
             'category_id' => ['nullable', 'integer', 'exists:categories,id'],
+            'credit_card_id' => ['nullable', 'integer', 'exists:credit_cards,id'],
+            'loan_id' => ['nullable', 'integer', 'exists:loans,id'],
+            'debtor_id' => ['nullable', 'integer', 'exists:debtors,id'],
+            'has_loan' => ['nullable', 'boolean'],
+            'has_credit_card' => ['nullable', 'boolean'],
             'q' => ['nullable', 'string', 'max:120'],
             'statement_import_id' => ['nullable', 'integer', 'exists:statement_imports,id'],
             'page' => ['nullable', 'integer', 'min:1'],
@@ -94,7 +99,8 @@ class IndexTransactionsRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $this->normalizeEmptyDateRangeInputs([
-            'type', 'category_id', 'q', 'statement_import_id', 'page', 'per_page', 'sort', 'direction',
+            'type', 'category_id', 'credit_card_id', 'loan_id', 'debtor_id', 'has_loan', 'has_credit_card',
+            'q', 'statement_import_id', 'page', 'per_page', 'sort', 'direction',
         ]);
         $this->applyDateRangePresetOrDefault();
     }
@@ -137,6 +143,45 @@ class IndexTransactionsRequest extends FormRequest
         return $value !== null ? (int) $value : null;
     }
 
+    public function creditCardId(): ?int
+    {
+        $value = $this->validated('credit_card_id');
+
+        return $value !== null ? (int) $value : null;
+    }
+
+    public function loanId(): ?int
+    {
+        $value = $this->validated('loan_id');
+
+        return $value !== null ? (int) $value : null;
+    }
+
+    public function debtorId(): ?int
+    {
+        $value = $this->validated('debtor_id');
+
+        return $value !== null ? (int) $value : null;
+    }
+
+    public function hasLoan(): ?bool
+    {
+        if (! $this->exists('has_loan') || $this->input('has_loan') === null || $this->input('has_loan') === '') {
+            return null;
+        }
+
+        return $this->boolean('has_loan');
+    }
+
+    public function hasCreditCard(): ?bool
+    {
+        if (! $this->exists('has_credit_card') || $this->input('has_credit_card') === null || $this->input('has_credit_card') === '') {
+            return null;
+        }
+
+        return $this->boolean('has_credit_card');
+    }
+
     public function perPage(): int
     {
         $value = $this->validated('per_page');
@@ -173,6 +218,11 @@ class IndexTransactionsRequest extends FormRequest
      *     category_id: ?int,
      *     q: ?string,
      *     statement_import_id: ?int,
+     *     credit_card_id: ?int,
+     *     loan_id: ?int,
+     *     debtor_id: ?int,
+     *     has_loan: ?bool,
+     *     has_credit_card: ?bool,
      *     per_page: int,
      *     sort: string,
      *     direction: string,
@@ -188,6 +238,11 @@ class IndexTransactionsRequest extends FormRequest
             'category_id' => $this->categoryId(),
             'q' => $this->search(),
             'statement_import_id' => $this->statementImportId(),
+            'credit_card_id' => $this->creditCardId(),
+            'loan_id' => $this->loanId(),
+            'debtor_id' => $this->debtorId(),
+            'has_loan' => $this->hasLoan(),
+            'has_credit_card' => $this->hasCreditCard(),
             'per_page' => $this->perPage(),
             'sort' => $this->sort(),
             'direction' => $this->direction(),

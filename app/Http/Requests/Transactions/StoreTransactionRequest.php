@@ -6,7 +6,7 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 /**
- * POST /api/transactions — manual create (PLAN_EXPANSAO §3.1 / §3.2).
+ * POST /api/transactions — manual create (PLAN_EXPANSAO §3.1 / PLAN_CARTOES §2.3).
  */
 class StoreTransactionRequest extends FormRequest
 {
@@ -20,12 +20,32 @@ class StoreTransactionRequest extends FormRequest
      */
     public function rules(): array
     {
+        $userId = (int) $this->user()->id;
+
         return [
             'occurred_on' => ['required', 'date', 'date_format:Y-m-d'],
             'amount' => ['required', 'numeric', 'gt:0', 'decimal:0,2'],
             'type' => ['required', 'string', Rule::in(['credit', 'debit'])],
             'description' => ['required', 'string', 'min:1', 'max:500'],
             'category_id' => ['sometimes', 'nullable', 'integer', 'exists:categories,id'],
+            'credit_card_id' => [
+                'sometimes',
+                'nullable',
+                'integer',
+                Rule::exists('credit_cards', 'id')->where(fn ($q) => $q->where('user_id', $userId)),
+            ],
+            'loan_id' => [
+                'sometimes',
+                'nullable',
+                'integer',
+                Rule::exists('loans', 'id')->where(fn ($q) => $q->where('user_id', $userId)),
+            ],
+            'debtor_id' => [
+                'sometimes',
+                'nullable',
+                'integer',
+                Rule::exists('debtors', 'id')->where(fn ($q) => $q->where('user_id', $userId)),
+            ],
             'notes' => ['sometimes', 'nullable', 'string', 'max:1000'],
         ];
     }
@@ -39,6 +59,9 @@ class StoreTransactionRequest extends FormRequest
             'amount.gt' => 'O valor deve ser maior que zero.',
             'type.in' => 'O tipo deve ser credit ou debit.',
             'category_id.exists' => 'Categoria inválida.',
+            'credit_card_id.exists' => 'Cartão inválido ou não pertence a você.',
+            'loan_id.exists' => 'Empréstimo inválido ou não pertence a você.',
+            'debtor_id.exists' => 'Pessoa inválida ou não pertence a você.',
         ];
     }
 
@@ -49,6 +72,9 @@ class StoreTransactionRequest extends FormRequest
      *     type: string,
      *     description: string,
      *     category_id: int|null,
+     *     credit_card_id: int|null,
+     *     loan_id: int|null,
+     *     debtor_id: int|null,
      *     notes: string|null
      * }
      */
@@ -62,6 +88,15 @@ class StoreTransactionRequest extends FormRequest
             'type' => (string) $validated['type'],
             'description' => (string) $validated['description'],
             'category_id' => isset($validated['category_id']) ? (int) $validated['category_id'] : null,
+            'credit_card_id' => array_key_exists('credit_card_id', $validated)
+                ? ($validated['credit_card_id'] !== null ? (int) $validated['credit_card_id'] : null)
+                : null,
+            'loan_id' => array_key_exists('loan_id', $validated)
+                ? ($validated['loan_id'] !== null ? (int) $validated['loan_id'] : null)
+                : null,
+            'debtor_id' => array_key_exists('debtor_id', $validated)
+                ? ($validated['debtor_id'] !== null ? (int) $validated['debtor_id'] : null)
+                : null,
             'notes' => isset($validated['notes']) && is_string($validated['notes']) && $validated['notes'] !== ''
                 ? $validated['notes']
                 : null,

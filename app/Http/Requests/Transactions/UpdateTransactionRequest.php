@@ -28,13 +28,34 @@ class UpdateTransactionRequest extends FormRequest
      */
     public function rules(): array
     {
+        $userId = (int) $this->user()->id;
+
         return [
             'occurred_on' => ['sometimes', 'date', 'date_format:Y-m-d'],
             'amount' => ['sometimes', 'numeric', 'gt:0', 'decimal:0,2'],
             'type' => ['sometimes', 'string', Rule::in(['credit', 'debit'])],
             'description' => ['sometimes', 'string', 'min:1', 'max:500'],
             'category_id' => ['sometimes', 'nullable', 'integer', 'exists:categories,id'],
+            'credit_card_id' => [
+                'sometimes',
+                'nullable',
+                'integer',
+                Rule::exists('credit_cards', 'id')->where(fn ($q) => $q->where('user_id', $userId)),
+            ],
+            'loan_id' => [
+                'sometimes',
+                'nullable',
+                'integer',
+                Rule::exists('loans', 'id')->where(fn ($q) => $q->where('user_id', $userId)),
+            ],
+            'debtor_id' => [
+                'sometimes',
+                'nullable',
+                'integer',
+                Rule::exists('debtors', 'id')->where(fn ($q) => $q->where('user_id', $userId)),
+            ],
             'notes' => ['sometimes', 'nullable', 'string', 'max:1000'],
+            'apply_category_to_matching' => ['sometimes', 'boolean'],
         ];
     }
 
@@ -70,6 +91,9 @@ class UpdateTransactionRequest extends FormRequest
             'amount.gt' => 'O valor deve ser maior que zero.',
             'type.in' => 'O tipo deve ser credit ou debit.',
             'category_id.exists' => 'Categoria inválida.',
+            'credit_card_id.exists' => 'Cartão inválido ou não pertence a você.',
+            'loan_id.exists' => 'Empréstimo inválido ou não pertence a você.',
+            'debtor_id.exists' => 'Pessoa inválida ou não pertence a você.',
         ];
     }
 
@@ -99,6 +123,29 @@ class UpdateTransactionRequest extends FormRequest
                 : null;
         }
 
+        if (array_key_exists('credit_card_id', $validated)) {
+            $out['credit_card_id'] = $validated['credit_card_id'] !== null
+                ? (int) $validated['credit_card_id']
+                : null;
+        }
+
+        if (array_key_exists('loan_id', $validated)) {
+            $out['loan_id'] = $validated['loan_id'] !== null
+                ? (int) $validated['loan_id']
+                : null;
+        }
+
+        if (array_key_exists('debtor_id', $validated)) {
+            $out['debtor_id'] = $validated['debtor_id'] !== null
+                ? (int) $validated['debtor_id']
+                : null;
+        }
+
         return $out;
+    }
+
+    public function applyCategoryToMatching(): bool
+    {
+        return $this->boolean('apply_category_to_matching');
     }
 }

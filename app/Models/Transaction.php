@@ -23,6 +23,8 @@ class Transaction extends Model
         'statement_import_id',
         'source_kind',
         'category_id',
+        'credit_card_id',
+        'loan_id',
         'external_id',
         'occurred_on',
         'description',
@@ -67,6 +69,22 @@ class Transaction extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(Category::class);
+    }
+
+    /**
+     * @return BelongsTo<CreditCard, $this>
+     */
+    public function creditCard(): BelongsTo
+    {
+        return $this->belongsTo(CreditCard::class);
+    }
+
+    /**
+     * @return BelongsTo<Loan, $this>
+     */
+    public function loan(): BelongsTo
+    {
+        return $this->belongsTo(Loan::class);
     }
 
     /**

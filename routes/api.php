@@ -13,7 +13,12 @@
 use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\CreditCardController;
+use App\Http\Controllers\DebtorController;
 use App\Http\Controllers\GoalController;
+use App\Http\Controllers\LoanController;
+use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\StatementImportController;
 use App\Http\Controllers\StatementUploadController;
 use App\Http\Controllers\TransactionAliasController;
@@ -47,6 +52,17 @@ Route::middleware(['auth', 'active'])->group(function () {
     Route::middleware('throttle:60,1')->group(function () {
         Route::get('/user', [AuthenticatedSessionController::class, 'show'])
             ->name('api.user');
+
+        // Profile self-service (PLAN_PERFIL_BRANDING §2.2) — GET /api/user permanece canônico.
+        Route::patch('/profile', [ProfileController::class, 'update'])
+            ->middleware('throttle:30,1')
+            ->name('api.profile.update');
+        Route::post('/profile/avatar', [ProfileController::class, 'storeAvatar'])
+            ->middleware('throttle:10,1')
+            ->name('api.profile.avatar.store');
+        Route::delete('/profile/avatar', [ProfileController::class, 'destroyAvatar'])
+            ->middleware('throttle:30,1')
+            ->name('api.profile.avatar.destroy');
 
         Route::get('/statements', [StatementImportController::class, 'index'])
             ->name('api.statements.index');
@@ -115,6 +131,65 @@ Route::middleware(['auth', 'active'])->group(function () {
             ->name('api.goals.destroy');
         Route::post('/goals/{goal}/recalculate', [GoalController::class, 'recalculate'])
             ->name('api.goals.recalculate');
+    });
+
+    // Credit cards (PLAN_CARTOES_EMPRESTIMOS §3.1 / §3.4)
+    Route::middleware(['feature:credit_cards', 'throttle:60,1'])->group(function () {
+        Route::get('/credit-cards', [CreditCardController::class, 'index'])
+            ->name('api.credit-cards.index');
+        Route::post('/credit-cards', [CreditCardController::class, 'store'])
+            ->name('api.credit-cards.store');
+        Route::get('/credit-cards/{credit_card}', [CreditCardController::class, 'show'])
+            ->name('api.credit-cards.show');
+        Route::patch('/credit-cards/{credit_card}', [CreditCardController::class, 'update'])
+            ->name('api.credit-cards.update');
+        Route::post('/credit-cards/{credit_card}/link-transactions', [CreditCardController::class, 'linkTransactions'])
+            ->name('api.credit-cards.link-transactions');
+        Route::delete('/credit-cards/{credit_card}', [CreditCardController::class, 'destroy'])
+            ->name('api.credit-cards.destroy');
+    });
+
+    // Loans / cobranças (PLAN_CARTOES_EMPRESTIMOS §3.2 / §3.4)
+    Route::middleware(['feature:loans', 'throttle:60,1'])->group(function () {
+        Route::get('/debtors', [DebtorController::class, 'index'])
+            ->name('api.debtors.index');
+        Route::post('/debtors', [DebtorController::class, 'store'])
+            ->name('api.debtors.store');
+        Route::get('/debtors/{debtor}', [DebtorController::class, 'show'])
+            ->name('api.debtors.show');
+        Route::patch('/debtors/{debtor}', [DebtorController::class, 'update'])
+            ->name('api.debtors.update');
+        Route::post('/debtors/{debtor}/link-transactions', [DebtorController::class, 'linkTransactions'])
+            ->name('api.debtors.link-transactions');
+        Route::delete('/debtors/{debtor}', [DebtorController::class, 'destroy'])
+            ->name('api.debtors.destroy');
+
+        Route::get('/loans', [LoanController::class, 'index'])
+            ->name('api.loans.index');
+        Route::post('/loans', [LoanController::class, 'store'])
+            ->name('api.loans.store');
+        Route::get('/loans/{loan}', [LoanController::class, 'show'])
+            ->name('api.loans.show');
+        Route::patch('/loans/{loan}', [LoanController::class, 'update'])
+            ->name('api.loans.update');
+        Route::delete('/loans/{loan}', [LoanController::class, 'destroy'])
+            ->name('api.loans.destroy');
+        Route::post('/loans/{loan}/mark-paid', [LoanController::class, 'markPaid'])
+            ->name('api.loans.mark-paid');
+        Route::post('/loans/{loan}/cancel', [LoanController::class, 'cancel'])
+            ->name('api.loans.cancel');
+    });
+
+    // In-app notifications (PLAN_CARTOES_EMPRESTIMOS §5)
+    Route::middleware(['feature:notifications', 'throttle:60,1'])->group(function () {
+        Route::get('/notifications', [NotificationController::class, 'index'])
+            ->name('api.notifications.index');
+        Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount'])
+            ->name('api.notifications.unread-count');
+        Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead'])
+            ->name('api.notifications.read-all');
+        Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead'])
+            ->name('api.notifications.read');
     });
 
     // Admin user management (PLAN_EXPANSAO §2.3)

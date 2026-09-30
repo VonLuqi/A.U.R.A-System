@@ -158,7 +158,8 @@ $PHP_BIN artisan config:cache
 |-------|--------|
 | `public/.htaccess` | No repo: rewrite → `index.php`, `Options -MultiViews -Indexes`, force HTTPS |
 | Path traversal / `.env` | `GET /.env` → **406** (não 200) |
-| Extratos privados | Sem `storage:link`; disk `serve=false`; rotas SPA não devem servir CSV |
+| Extratos privados | Disk `statements` `serve=false`; **nunca** symlink de `private/` para o web root |
+| Avatars (Etapa I) | Disk `public` + `storage:link` (`public/storage` → `storage/app/public`); URL `/storage/avatars/…` |
 | Directory listing | `-Indexes` no `.htaccess` Laravel |
 
 ## PHP no HostGator (contrato §0.2)
@@ -208,7 +209,14 @@ O workflow `deploy-hostgator.yml` já tenta, nesta ordem: `ea-php82` → `/opt/c
 
 ### Cron canônico (`schedule:run`) · §6.3
 
-Laravel agenda `statements:purge-files` diariamente às **03:15** (`routes/console.php`). O cron do host chama o scheduler **a cada minuto**.
+Laravel agenda em `routes/console.php`:
+
+| Command | Horário |
+|---------|---------|
+| `statements:purge-files` | **03:15** (diário) |
+| `aura:check-due-dates` | **08:00** (diário; Etapa H — feature `AURA_FEATURE_NOTIFICATIONS`) |
+
+O cron do host chama o scheduler **a cada minuto**. **Não** é necessário novo cron job para vencimentos — só o `schedule:run` já existente.
 
 **cPanel → Cron Jobs → Add**
 
@@ -228,11 +236,14 @@ Alternativa se `ea-php82` estiver no PATH do cron:
 * * * * * cd /home4/luca9682/aura && ea-php82 artisan schedule:run >> storage/logs/scheduler.log 2>&1
 ``
 
-**Validar após criar:**
+**Validar após criar / após deploy Etapa H:**
 
 1. Aguardar 1–2 min → ler `storage/logs/scheduler.log` (ou e-mail de saída do cron).
-2. `$PHP_BIN artisan schedule:list` → entrada `statements:purge-files` @ `03:15`.
-3. Dry-run: `$PHP_BIN artisan statements:purge-files --days=90 --dry-run`.
+2. `$PHP_BIN artisan schedule:list` → deve listar **ambas**:
+   - `statements:purge-files` @ `03:15`
+   - `aura:check-due-dates` @ `08:00`
+3. Dry-run purge: `$PHP_BIN artisan statements:purge-files --days=90 --dry-run`.
+4. Dry-run vencimentos: `$PHP_BIN artisan aura:check-due-dates --dry-run` (no-op se `AURA_FEATURE_NOTIFICATIONS=false`).
 
 Se o path real do `ea-php82` for outro, atualizar **esta** linha no cron e neste runbook. Não usar `php` genérico sem `php -v` ≥ 8.2.
 
@@ -244,6 +255,11 @@ Se o path real do `ea-php82` for outro, atualizar **esta** linha no cron e neste
 | `migrate` periódico no cron | Migrate só no deploy / Migrate HostGator / manual |
 | URLs web de cron (wget/curl em `public/`) | Scheduler só via CLI `artisan schedule:run` |
 
+### Filas e notificações Etapa H (§4.5)
+
+- Produção HostGator: manter `QUEUE_CONNECTION=sync` (já em `.env.production.example`).
+- `CreditCardDueNotification` / `LoanDueNotification` **não** implementam `ShouldQueue` — o command `aura:check-due-dates` envia inline (database + mail opcional) durante o `schedule:run`.
+- Se no futuro `QUEUE_CONNECTION=database` (ou Redis) for ativado **e** existir worker, as classes *podem* passar a `implements ShouldQueue`; até lá o fallback seguro continua sendo **sync** (sem `queue:work` no cron).
 ### Artisan no servidor (pós-deploy)
 
 ``bash
@@ -475,10 +491,12 @@ Contrato + status (2026-09-29):
 | Pasta `/home4/luca9682/aura` | Existe (histórico deploy + File Manager; FTP `aura/`) |
 | Document root | **`…/aura/public`** — `GET /build/manifest.json` → **200** `application/json` (assets Vite no web root) |
 | Docroot ≠ raiz Laravel | `GET /.env` → **406** (não 200); app responde cookies `aura_session` via `public/index.php` |
-| `storage:link` para extratos | **Proibido** — disk `statements` privado; sem symlink `public/storage` → private |
+| `storage:link` para extratos | **Proibido** — disk `statements` privado; **nunca** symlink de `storage/app/private/` |
+| `storage:link` para avatars (Etapa I) | **Obrigatório** — `public/storage` → `storage/app/public` (só disk `public`; ver §5.8) |
 | `storage/app/private/statements` | Criar no servidor se ausente (`mkdir -p`); ou no 1º upload (`StatementStorage`) |
+| `storage/app/public/avatars` | Criar no cutover Etapa I (`mkdir -p`); PHP precisa escrever (`775`) |
 
-Árvore esperada após deploy:
+Árvore esperada após deploy (+ Etapa I):
 
 ``text
 /home4/luca9682/aura/
@@ -488,10 +506,12 @@ Contrato + status (2026-09-29):
 │   ├── index.php
 │   ├── .htaccess
 │   ├── .user.ini        ← limites PHP §1.5 (upload 20M, display_errors Off)
-│   └── build/           ← Vite (manifest.json)
+│   ├── build/           ← Vite (manifest.json)
+│   └── storage/         ← symlink → ../storage/app/public (Etapa I; `artisan storage:link`)
 ├── resources/ routes/
 ├── storage/
-│   └── app/private/statements/
+│   ├── app/private/statements/   ← extratos (disk statements; privado)
+│   └── app/public/avatars/       ← avatars (disk public; Etapa I)
 ├── vendor/              ← extract vendor.tar.gz
 ├── artisan
 └── composer.json
@@ -502,6 +522,7 @@ Criar pasta (se ainda não existir):
 ``bash
 mkdir -p /home4/luca9682/aura
 mkdir -p /home4/luca9682/aura/storage/app/private/statements
+mkdir -p /home4/luca9682/aura/storage/app/public/avatars
 mkdir -p /home4/luca9682/aura/storage/framework/{cache,sessions,views}
 mkdir -p /home4/luca9682/aura/storage/logs
 mkdir -p /home4/luca9682/aura/bootstrap/cache
@@ -513,7 +534,7 @@ Objetivo: PHP (UID `luca9682` no shared) escreve em `storage/` e `bootstrap/cach
 
 ``bash
 cd /home4/luca9682/aura
-mkdir -p storage/framework/{cache,sessions,views} storage/logs storage/app/private/statements bootstrap/cache
+mkdir -p storage/framework/{cache,sessions,views} storage/logs storage/app/private/statements storage/app/public/avatars bootstrap/cache
 find storage bootstrap/cache -type d -exec chmod 775 {} \;
 find storage bootstrap/cache -type f -exec chmod 664 {} \;
 chmod -R ug+rwx storage bootstrap/cache
@@ -524,7 +545,8 @@ chmod -R ug+rwx storage bootstrap/cache
 |-------|------|
 | Escrita | `$PHP_BIN artisan tinker --execute="file_put_contents(storage_path('logs/perm-check.txt'), 'ok');"` → remover o arquivo depois |
 | Logs | Erro controlado cria/atualiza `storage/logs/laravel.log` |
-| Upload | Extrato sob `storage/app/private/statements/...` (§7) |
+| Upload extrato | Extrato sob `storage/app/private/statements/...` (§7) |
+| Upload avatar (I) | Arquivo sob `storage/app/public/avatars/{user_id}/...` + URL `/storage/avatars/...` (§5.8) |
 | Live | Cookie `aura_session` (driver `database` + framework dirs) implica storage/bootstrap utilizáveis |
 
 Diagnose workflows (`fix-hostgator-403` / `diagnose-hostgator-500`) já aplicam `chmod 775` nesses dirs se necessário.
@@ -770,6 +792,9 @@ $PHP_BIN artisan up
 | `AURA_FEATURE_ALIASES` | Apelidos |
 | `AURA_FEATURE_CREDIT_CARD_UPLOAD` | Fatura CC no upload |
 | `AURA_FEATURE_ADMIN_USERS` | Painel Admin usuários |
+| `AURA_FEATURE_CREDIT_CARDS` | Cadastro de cartões (Etapa H) |
+| `AURA_FEATURE_LOANS` | Empréstimos / cobranças (Etapa H) |
+| `AURA_FEATURE_NOTIFICATIONS` | Sino + `aura:check-due-dates` (Etapa H) |
 
 **Rollback da 141100 (evitar em prod):** só com backup fresco; confirmar que não há colisão de `unique_hash` entre users antes de recriar o unique global; preferir forward-fix.
 
@@ -782,6 +807,173 @@ $PHP_BIN artisan up
 5. Console: assets 200; sem erros críticos de rota SPA.
 
 Aceitação automatizada (proxy local do smoke): `php artisan test --filter=Expansion`.
+
+### Etapa H — cartões, empréstimos, notificações (§5.7)
+
+Pré-requisito: Etapas F/G já em produção. Cron `schedule:run` **já existente** passa a executar `aura:check-due-dates` @ 08:00 (sem novo job).
+
+#### Migrations H
+
+| Migration | Efeito |
+|-----------|--------|
+| `2026_09_29_194311_create_credit_cards_table` | `credit_cards` |
+| `2026_09_29_194348_create_loans_table` | `loans` |
+| `2026_09_29_194420_add_credit_card_and_loan_to_transactions_table` | FKs nullable em `transactions` |
+| `2026_09_29_194449_create_notifications_table` | tabela Laravel `notifications` |
+| `2026_09_29_194537_add_max_credit_cards_and_loans_to_role_limits_table` | cotas `max_credit_cards` / `max_loans` |
+
+#### Sequência operacional
+
+``bash
+# 0) Backup MySQL (cPanel → phpMyAdmin Export, ou SSH):
+# mysqldump -u luca9682_vonluqi -p luca9682_aura > ~/backups/aura_pre_etapa_h_$(date +%Y%m%d).sql
+
+# 1) Deploy código (merge main → GitHub Actions deploy-hostgator, ou FTP)
+# 2) Manutenção + migrate
+PHP_BIN=/opt/cpanel/ea-php82/root/usr/bin/php
+cd /home4/luca9682/aura
+$PHP_BIN artisan down
+$PHP_BIN artisan migrate --force
+$PHP_BIN artisan db:seed --class=Database\\Seeders\\RoleLimitsSeeder --force
+$PHP_BIN artisan config:cache && $PHP_BIN artisan route:cache && $PHP_BIN artisan view:cache || true
+$PHP_BIN artisan up
+
+# Sem SSH: workflow_dispatch → Migrate HostGator (migrate-hostgator.yml)
+``
+
+#### Feature flags (rollout gradual)
+
+No `.env` live, liberar um pilar por vez (`false` → `true`), depois `config:cache`:
+
+1. `AURA_FEATURE_CREDIT_CARDS=true`
+2. `AURA_FEATURE_LOANS=true`
+3. `AURA_FEATURE_NOTIFICATIONS=true`
+
+Defaults no template: **false** (`.env.production.example`). Janelas: `AURA_NOTIFY_CARD_DUE_DAYS` / `AURA_NOTIFY_LOAN_DUE_DAYS` (default `3`).
+
+Após cada flag: `$PHP_BIN artisan config:clear && $PHP_BIN artisan config:cache`.
+
+#### MAIL (canal e-mail das due notifications)
+
+| Ambiente | Recomendação |
+|----------|----------------|
+| Local | `MAIL_MAILER=log` — inspecionar `storage/logs/laravel.log` |
+| Produção (só in-app) | Manter `MAIL_MAILER=log` (database channel já grava em `notifications`) — **default seguro** |
+| Produção (e-mail real) | `MAIL_MAILER=smtp` + host/credenciais válidos; `MAIL_FROM_ADDRESS` do domínio |
+
+As classes `CreditCardDueNotification` / `LoanDueNotification` usam canais `database` + `mail`. Com `MAIL_MAILER=log`, o e-mail não sai da máquina — seguro para validar o command sem SMTP.
+
+#### Validar scheduler pós-H
+
+O cron cPanel **não muda** (`* * * * * … schedule:run`). Só confirmar que o código novo registrou o command:
+
+``bash
+$PHP_BIN artisan schedule:list
+# statements:purge-files @ 03:15
+# aura:check-due-dates @ 08:00
+
+$PHP_BIN artisan aura:check-due-dates --dry-run
+# Com AURA_FEATURE_NOTIFICATIONS=false → "feature notifications is off" (exit 0)
+``
+
+#### Smoke checklist operador (H)
+
+1. Login → nav **Cartões** / **Cobranças** visíveis com flags on (ocultos com flags off).
+2. Criar 2 cartões; vincular despesa a um no modal de transação.
+3. Criar cobrança cash + `card_limit`; mark-paid.
+4. Com notifications on: `aura:check-due-dates` → linha em `notifications` + badge no sino.
+5. Flags off → API `403 feature_disabled`; SPA sem links quebrando MVP.
+
+Aceitação automatizada (proxy): `php artisan test --filter="CreditCardCrudTest|LoanCrudTest|TransactionCardLoanLinkTest|CheckDueDatesCommandTest|NotificationApiTest|FeatureFlagsTest"`.
+
+#### Rollback (H)
+
+Ordem segura (preferir flags off a dropar tabelas):
+
+1. No `.env`: `AURA_FEATURE_CREDIT_CARDS=false`, `AURA_FEATURE_LOANS=false`, `AURA_FEATURE_NOTIFICATIONS=false` → `config:cache` (UI/API somem; MVP intacto).
+2. Só se necessário e **com backup fresco**, rollback das **5** migrations H (mais recente primeiro):
+
+``bash
+$PHP_BIN artisan migrate:rollback --step=5 --force
+# reverte: 194537 → 194449 → 194420 → 194348 → 194311
+``
+
+Não rodar `DemoCreditCardsAndLoansSeeder` em produção.
+
+### Etapa I — perfil, avatars, `storage:link` (§5.8)
+
+> Plano: `docs/PLAN_PERFIL_BRANDING.md` §2.7.  
+> Distinção crítica: **disk `public` (avatars) ≠ disk `statements` (extratos)**.
+
+#### Dois disks (não misturar)
+
+| Disk | Raiz física | URL pública | Symlink |
+| --- | --- | --- | --- |
+| `public` | `storage/app/public/` (avatars em `avatars/{user_id}/`) | `{APP_URL}/storage/avatars/...` | **Sim** — `public/storage` → `storage/app/public` |
+| `statements` | `storage/app/private/statements/` | **Nenhuma** (`serve=false`) | **Proibido** — nunca apontar `private/` para o web root |
+
+O comando `php artisan storage:link` cria **apenas** o link do disk `public`. Ele **não** expõe extratos. A regra histórica “sem `storage:link` para statements” permanece válida.
+
+#### Local (dev)
+
+``bash
+php artisan storage:link
+# Cria: public/storage → storage/app/public
+mkdir -p storage/app/public/avatars
+``
+
+URL de smoke local: `http://localhost:8000/storage/avatars/{user_id}/{file}`.
+
+#### Produção HostGator — sequência
+
+``bash
+PHP_BIN=/opt/cpanel/ea-php82/root/usr/bin/php
+cd /home4/luca9682/aura
+
+# 0) Backup MySQL antes da migration avatar_path
+# 1) Deploy código + npm build
+# 2) Dirs + permissões
+mkdir -p storage/app/public/avatars
+find storage/app/public -type d -exec chmod 775 {} \;
+
+# 3) Migrate + link + caches
+$PHP_BIN artisan down
+mkdir -p storage/app/public/avatars
+$PHP_BIN artisan migrate --force
+$PHP_BIN artisan storage:link
+$PHP_BIN artisan config:cache && $PHP_BIN artisan route:cache && $PHP_BIN artisan view:cache || true
+$PHP_BIN artisan up
+``
+
+> CI: `deploy-hostgator.yml` (SSH pós-FTP e fallback HTTPS) e `migrate-hostgator.yml` já tentam `mkdir …/avatars` + `storage:link` (skip se link existir / hosting bloquear).
+
+Verificar o symlink:
+
+``bash
+ls -la /home4/luca9682/aura/public/storage
+# Esperado: public/storage -> ../storage/app/public  (ou absoluto equivalente)
+``
+
+#### Fallback se `storage:link` falhar (symlink desabilitado no hosting)
+
+1. cPanel → **File Manager** → pasta `aura/public/`.
+2. Criar link simbólico `storage` apontando para `../storage/app/public` (se a UI permitir).
+3. Alternativa SSH (se shell OK):
+
+``bash
+cd /home4/luca9682/aura/public
+ln -sfn ../storage/app/public storage
+``
+
+4. Se o provedor **bloquear** symlinks: abrir ticket HostGator pedindo permissão de symlink no docroot **ou** avaliar alias Apache — **não** copiar avatars para dentro de `public/` de forma permanente (duplica e foge do disk Laravel). Validar com suporte antes de gambiarra.
+
+#### Smoke pós-cutover (avatars)
+
+1. Login → Conta → upload JPEG/PNG/WebP ≤ 2 MB.
+2. Resposta API com `user.avatar_url` não-nulo.
+3. Abrir em aba anônima: `https://aura.vonluqi.com/storage/avatars/{id}/{uuid}.webp` → **200** + imagem.
+4. Confirmar que `https://aura.vonluqi.com/storage/../app/private/statements/...` **não** lista/serve extratos.
+5. Remover avatar → `avatar_url` volta `null`; arquivo some do disk.
 
 ### Migrate sem shell — fallback (§5.4)
 
@@ -816,6 +1008,7 @@ Baseline obrigatório antes do go-live. Template: `.env.production.example`.
 | Sessão | `SESSION_SECURE_COOKIE=true`, `SESSION_HTTP_ONLY=true`, `SESSION_SAME_SITE=lax` (`config/session.php`) |
 | Auth | Session cookie + CSRF same-origin; **sem Sanctum** (Etapa C Opção A) |
 | Extratos | Disk `statements` → `storage/app/private/statements`; `serve=false` (`config/filesystems.php`) |
+| Avatars (Etapa I) | Disk `public` + `storage:link`; path `storage/app/public/avatars/…`; URL `/storage/avatars/…` (§5.8) |
 | Rate limit | `RATE_LIMIT_LOGIN_PER_EMAIL=5`, `RATE_LIMIT_LOGIN_PER_IP=20`, `RATE_LIMIT_UPLOAD_PER_USER=10` (`AppServiceProvider`) |
 
 ### Checklist rápido pós-SSL
@@ -849,7 +1042,8 @@ Baseline obrigatório antes do go-live. Template: `.env.production.example`.
 |-------|-----------|
 | `GET /.env` | **406** (não 200) — §1.3.1 |
 | Path traversal / `composer.json` | Docroot = `aura/public` apenas; raiz Laravel fora do web root |
-| `storage/app/private/statements/` | Disk `serve=false`; sem `storage:link`; não listável por URL pública |
+| `storage/app/private/statements/` | Disk `serve=false`; **sem** symlink de `private/`; não listável por URL pública |
+| `storage/app/public/avatars/` + `public/storage` | Disk `public` + `storage:link` (Etapa I §5.8); só avatars |
 | API erro `APP_DEBUG=false` | `bootstrap/app.php` sanitiza `QueryException` (sem SQLSTATE/paths); `GET /api/user` → **401** `{"message":"Unauthenticated."}` |
 ### Auth / sessão / CSRF (§7.3) — 2026-09-29
 
@@ -984,7 +1178,8 @@ Abortar / não declarar Etapa E done se qualquer item for verdadeiro:
 | `APP_DEBUG=true` acidental | `false` + `config:cache`; investigar vazamento |
 | `.env` ou `vendor` ausentes | Restaurar `.env` do cofre; extract `vendor.tar.gz` / redeploy |
 | Login admin impossível | Seed controlado (§5.3); checar `ADMIN_*` / DB |
-| Upload grava em path público | Verificar disk `statements` + sem `storage:link` |
+| Upload grava extrato em path público | Verificar disk `statements` + sem symlink de `private/` |
+| Avatar 404 em `/storage/avatars/...` | Rodar `storage:link` (§5.8); permissões `storage/app/public` |
 | Document root = raiz Laravel | Reapontar para `aura/public` (§0.1 / §1.3) |
 ## DoD Etapa E (§9) — 2026-09-29
 
@@ -1005,6 +1200,7 @@ Laravel root:     /home4/luca9682/aura
 Document root:    /home4/luca9682/aura/public
 Env file:         /home4/luca9682/aura/.env
 Private uploads:  /home4/luca9682/aura/storage/app/private/statements
+Public avatars:   /home4/luca9682/aura/storage/app/public/avatars  (+ public/storage symlink)
 URL:              https://aura.vonluqi.com
 PHP:              /opt/cpanel/ea-php82/root/usr/bin/php
 ``

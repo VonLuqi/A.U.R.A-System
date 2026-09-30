@@ -1,10 +1,16 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { cx } from '../../lib/cx';
+import { ABILITIES, can, featureEnabled, isAdmin } from '../../lib/auth';
 import { getErrorMessage, getValidationErrors } from '../../lib/errors';
-import { isAdmin } from '../../lib/auth';
+import { ALIAS_RETROACTIVE_LIMIT, applyToExistingWarning } from '../../lib/aliases';
+import { LOAN_STATUSES } from '../../lib/loans';
 import { useAuth } from '../../hooks/useAuth';
+import { useCreditCards } from '../../hooks/useCreditCards';
+import { useDebtors } from '../../hooks/useDebtors';
+import { useLoans } from '../../hooks/useLoans';
 import Button from '../ui/Button';
 import CategoryFormSelect from '../ui/CategoryFormSelect';
+import DateInput from '../ui/DateInput';
 import Input from '../ui/Input';
 import Label from '../ui/Label';
 import Modal from '../ui/Modal';
@@ -16,6 +22,9 @@ const EMPTY_ERRORS = {
     description: '',
     category_id: '',
     notes: '',
+    credit_card_id: '',
+    loan_id: '',
+    debtor_id: '',
 };
 
 /**
@@ -54,7 +63,7 @@ function parseAmount(raw) {
 }
 
 /**
- * TransactionFormModal — criar/editar (PLAN_EXPANSAO §8.2).
+ * TransactionFormModal — criar/editar (PLAN_EXPANSAO §8.2 / PLAN_CARTOES_EMPRESTIMOS §6.5).
  *
  * @param {{
  *   open: boolean,
@@ -83,12 +92,36 @@ export default function TransactionFormModal({
     const formId = useId();
     const descriptionRef = useRef(null);
 
+    const showCreditCards =
+        featureEnabled(user, 'credit_cards') && can(user, ABILITIES.creditCardsManage);
+    const showLoans = featureEnabled(user, 'loans') && can(user, ABILITIES.loansManage);
+
+    const creditCardsQuery = useCreditCards(
+        open && showCreditCards
+            ? { is_active: 1, per_page: 100, enabled: true }
+            : { enabled: false },
+    );
+    const loansQuery = useLoans(
+        open && showLoans
+            ? { per_page: 100, enabled: true }
+            : { enabled: false },
+    );
+    const debtorsQuery = useDebtors(
+        open && showLoans
+            ? { per_page: 100, enabled: true }
+            : { enabled: false },
+    );
+
     const [occurredOn, setOccurredOn] = useState('');
     const [amount, setAmount] = useState('');
     const [type, setType] = useState('debit');
     const [description, setDescription] = useState('');
     const [categoryId, setCategoryId] = useState('');
     const [notes, setNotes] = useState('');
+    const [creditCardId, setCreditCardId] = useState('');
+    const [loanId, setLoanId] = useState('');
+    const [debtorId, setDebtorId] = useState('');
+    const [applyCategoryToMatching, setApplyCategoryToMatching] = useState(false);
     const [fieldErrors, setFieldErrors] = useState(EMPTY_ERRORS);
     const [formError, setFormError] = useState('');
 
@@ -100,6 +133,44 @@ export default function TransactionFormModal({
         return transaction.source_kind === 'import' && !isAdmin(user);
     }, [mode, transaction, user]);
 
+    const selectedCardId = creditCardId ? Number(creditCardId) : null;
+    const selectedLoanId = loanId ? Number(loanId) : null;
+
+    const cardOptions = useMemo(() => {
+        const rows = creditCardsQuery.data ?? [];
+        const selected = transaction?.credit_card;
+
+        if (
+            selected?.id != null
+            && selectedCardId === selected.id
+            && !rows.some((card) => card.id === selected.id)
+        ) {
+            return [selected, ...rows];
+        }
+
+        return rows;
+    }, [creditCardsQuery.data, selectedCardId, transaction?.credit_card]);
+
+    const loanOptions = useMemo(() => {
+        const rows = (loansQuery.data ?? []).filter(
+            (loan) =>
+                loan.status === LOAN_STATUSES.open
+                || loan.status === LOAN_STATUSES.partial
+                || loan.id === selectedLoanId,
+        );
+        const selected = transaction?.loan;
+
+        if (
+            selected?.id != null
+            && selectedLoanId === selected.id
+            && !rows.some((loan) => loan.id === selected.id)
+        ) {
+            return [selected, ...rows];
+        }
+
+        return rows;
+    }, [loansQuery.data, selectedLoanId, transaction?.loan]);
+
     useEffect(() => {
         if (!open) {
             return;
@@ -107,6 +178,7 @@ export default function TransactionFormModal({
 
         setFieldErrors(EMPTY_ERRORS);
         setFormError('');
+        setApplyCategoryToMatching(false);
 
         if (mode === 'edit' && transaction) {
             setOccurredOn(transaction.occurred_on ?? '');
@@ -117,6 +189,19 @@ export default function TransactionFormModal({
                 transaction.category?.id != null ? String(transaction.category.id) : '',
             );
             setNotes(typeof transaction.notes === 'string' ? transaction.notes : '');
+            setCreditCardId(
+                transaction.credit_card?.id != null
+                    ? String(transaction.credit_card.id)
+                    : '',
+            );
+            setLoanId(
+                transaction.loan?.id != null ? String(transaction.loan.id) : '',
+            );
+            setDebtorId(
+                transaction.loan?.debtor_id != null
+                    ? String(transaction.loan.debtor_id)
+                    : '',
+            );
             return;
         }
 
@@ -131,6 +216,9 @@ export default function TransactionFormModal({
         setDescription('');
         setCategoryId('');
         setNotes('');
+        setCreditCardId('');
+        setLoanId('');
+        setDebtorId('');
     }, [open, mode, transaction]);
 
     function clearField(name) {
@@ -199,6 +287,24 @@ export default function TransactionFormModal({
             };
         }
 
+        if (showCreditCards) {
+            payload.credit_card_id = creditCardId === '' ? null : Number(creditCardId);
+        }
+
+        if (showLoans) {
+            if (debtorId) {
+                payload.debtor_id = Number(debtorId);
+                payload.loan_id = null;
+            } else {
+                payload.debtor_id = null;
+                payload.loan_id = loanId === '' ? null : Number(loanId);
+            }
+        }
+
+        if (mode === 'edit' && applyCategoryToMatching) {
+            payload.apply_category_to_matching = true;
+        }
+
         try {
             await onSubmit(payload);
         } catch (error) {
@@ -212,6 +318,9 @@ export default function TransactionFormModal({
                     description: validation.description?.[0] ?? '',
                     category_id: validation.category_id?.[0] ?? '',
                     notes: validation.notes?.[0] ?? '',
+                    credit_card_id: validation.credit_card_id?.[0] ?? '',
+                    loan_id: validation.loan_id?.[0] ?? '',
+                    debtor_id: validation.debtor_id?.[0] ?? '',
                 });
                 return;
             }
@@ -225,7 +334,7 @@ export default function TransactionFormModal({
     const descriptionText =
         mode === 'edit'
             ? coreLocked
-                ? 'Lançamento importado: você pode ajustar categoria e notas.'
+                ? 'Lançamento importado: você pode ajustar categoria, notas e vínculos.'
                 : 'Atualize os dados deste lançamento.'
             : 'Registre uma entrada ou saída manual.';
 
@@ -267,9 +376,8 @@ export default function TransactionFormModal({
                         htmlFor={`${formId}-date`}
                         error={fieldErrors.occurred_on}
                     >
-                        <Input
+                        <DateInput
                             id={`${formId}-date`}
-                            type="date"
                             value={occurredOn}
                             disabled={submitting || coreLocked}
                             invalid={Boolean(fieldErrors.occurred_on)}
@@ -373,6 +481,104 @@ export default function TransactionFormModal({
                     />
                 </Field>
 
+                {mode === 'edit' ? (
+                    <div className="flex flex-col gap-1.5">
+                        <label className="flex items-start gap-3 text-caption text-ink-secondary">
+                            <input
+                                type="checkbox"
+                                className="mt-0.5 size-4 rounded border-border bg-surface-sunken text-brand focus-visible:ring-brand"
+                                checked={applyCategoryToMatching}
+                                disabled={submitting}
+                                onChange={(event) =>
+                                    setApplyCategoryToMatching(event.target.checked)
+                                }
+                            />
+                            <span>
+                                Aplicar esta categoria a todos com a mesma descrição
+                            </span>
+                        </label>
+                        {applyCategoryToMatching ? (
+                            <p className="pl-7 text-small text-ink-muted" role="note">
+                                {applyToExistingWarning(ALIAS_RETROACTIVE_LIMIT)}
+                            </p>
+                        ) : null}
+                    </div>
+                ) : null}
+
+                {showCreditCards || showLoans ? (
+                    <div className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-surface-raised/40 p-3">
+                        <p className="text-small text-ink-muted" role="note">
+                            Marque se esta despesa foi feita no cartão X para a pessoa Y.
+                        </p>
+
+                        {showCreditCards ? (
+                            <Field
+                                label="Cartão (opcional)"
+                                htmlFor={`${formId}-card`}
+                                error={fieldErrors.credit_card_id}
+                            >
+                                <select
+                                    id={`${formId}-card`}
+                                    value={creditCardId}
+                                    disabled={submitting || creditCardsQuery.status === 'loading'}
+                                    aria-invalid={Boolean(fieldErrors.credit_card_id) || undefined}
+                                    className={selectClass(Boolean(fieldErrors.credit_card_id))}
+                                    onChange={(event) => {
+                                        setCreditCardId(event.target.value);
+                                        clearField('credit_card_id');
+                                    }}
+                                >
+                                    <option value="">Nenhum</option>
+                                    {cardOptions.map((card) => (
+                                        <option key={card.id} value={card.id}>
+                                            {card.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </Field>
+                        ) : null}
+
+                        {showLoans ? (
+                            <Field
+                                label="Pessoa (opcional)"
+                                htmlFor={`${formId}-debtor`}
+                                error={fieldErrors.debtor_id || fieldErrors.loan_id}
+                            >
+                                <select
+                                    id={`${formId}-debtor`}
+                                    value={debtorId}
+                                    disabled={submitting || debtorsQuery.status === 'loading'}
+                                    aria-invalid={
+                                        Boolean(fieldErrors.debtor_id || fieldErrors.loan_id)
+                                        || undefined
+                                    }
+                                    className={selectClass(
+                                        Boolean(fieldErrors.debtor_id || fieldErrors.loan_id),
+                                    )}
+                                    onChange={(event) => {
+                                        const value = event.target.value;
+                                        setDebtorId(value);
+                                        setLoanId('');
+                                        clearField('debtor_id');
+                                        clearField('loan_id');
+                                    }}
+                                >
+                                    <option value="">Nenhuma</option>
+                                    {(debtorsQuery.data ?? []).map((person) => (
+                                        <option key={person.id} value={person.id}>
+                                            {person.name}
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="mt-1 text-small text-ink-muted">
+                                    Cadastre a pessoa em Devedores → Nova pessoa. Ao salvar,
+                                    cria ou reutiliza o empréstimo em aberto.
+                                </p>
+                            </Field>
+                        ) : null}
+                    </div>
+                ) : null}
+
                 <Field label="Notas" htmlFor={`${formId}-notes`} error={fieldErrors.notes}>
                     <textarea
                         id={`${formId}-notes`}
@@ -440,5 +646,15 @@ function TypeOption({ active, disabled, onClick, children }) {
         >
             {children}
         </button>
+    );
+}
+
+function selectClass(invalid) {
+    return cx(
+        'h-11 w-full rounded-lg border bg-surface-sunken px-3 font-sans text-body text-ink',
+        'outline-none transition-[border-color,box-shadow]',
+        'focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand',
+        'disabled:cursor-not-allowed disabled:opacity-60',
+        invalid ? 'border-feedback-danger' : 'border-border',
     );
 }

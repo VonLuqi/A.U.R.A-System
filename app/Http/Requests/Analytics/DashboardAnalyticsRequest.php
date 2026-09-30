@@ -54,6 +54,8 @@ class DashboardAnalyticsRequest extends FormRequest
             ],
             'type' => ['nullable', 'string', Rule::in(['credit', 'debit'])],
             'category_id' => ['nullable', 'integer', 'exists:categories,id'],
+            'credit_card_id' => ['nullable', 'integer', 'exists:credit_cards,id'],
+            'debtor_id' => ['nullable', 'integer', 'exists:debtors,id'],
             'q' => ['nullable', 'string', 'max:120'],
             'group_by' => ['nullable', 'string', Rule::in(self::GROUP_BY)],
         ];
@@ -73,6 +75,8 @@ class DashboardAnalyticsRequest extends FormRequest
             'to.after_or_equal' => 'A data final deve ser posterior ou igual à data inicial.',
             'type.in' => 'O tipo deve ser credit ou debit.',
             'category_id.exists' => 'Categoria inválida.',
+            'credit_card_id.exists' => 'Cartão inválido.',
+            'debtor_id.exists' => 'Pessoa inválida.',
             'group_by.in' => 'group_by inválido. Use day ou month.',
             'preset.in' => 'preset inválido. Use current_month, last_30, last_90 ou custom.',
             'to' => 'O intervalo de datas excede o limite do seu perfil.',
@@ -81,7 +85,9 @@ class DashboardAnalyticsRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        $this->normalizeEmptyDateRangeInputs(['type', 'category_id', 'q', 'group_by']);
+        $this->normalizeEmptyDateRangeInputs([
+            'type', 'category_id', 'credit_card_id', 'debtor_id', 'q', 'group_by',
+        ]);
         $this->applyDateRangePresetOrDefault();
         $this->applyResolvedGroupBy();
     }
@@ -118,6 +124,20 @@ class DashboardAnalyticsRequest extends FormRequest
         return $value !== null ? (int) $value : null;
     }
 
+    public function creditCardId(): ?int
+    {
+        $value = $this->validated('credit_card_id');
+
+        return $value !== null ? (int) $value : null;
+    }
+
+    public function debtorId(): ?int
+    {
+        $value = $this->validated('debtor_id');
+
+        return $value !== null ? (int) $value : null;
+    }
+
     public function search(): ?string
     {
         $value = $this->validated('q');
@@ -149,6 +169,8 @@ class DashboardAnalyticsRequest extends FormRequest
      *     to: string,
      *     type: ?string,
      *     category_id: ?int,
+     *     credit_card_id: ?int,
+     *     debtor_id: ?int,
      *     q: ?string,
      *     group_by: string,
      *     preset: ?string
@@ -161,6 +183,8 @@ class DashboardAnalyticsRequest extends FormRequest
             'to' => $this->toDate(),
             'type' => $this->type(),
             'category_id' => $this->categoryId(),
+            'credit_card_id' => $this->creditCardId(),
+            'debtor_id' => $this->debtorId(),
             'q' => $this->search(),
             'group_by' => $this->groupBy(),
             'preset' => $this->preset(),
