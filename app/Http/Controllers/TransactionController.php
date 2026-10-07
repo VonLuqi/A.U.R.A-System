@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\Transactions\IndexTransactionsRequest;
 use App\Http\Requests\Transactions\StoreTransactionRequest;
 use App\Http\Requests\Transactions\UpdateTransactionRequest;
+use App\Http\Requests\Transactions\WipeTransactionsRequest;
 use App\Http\Resources\TransactionResource;
 use App\Models\Transaction;
 use App\Services\CategoryBulkApplyService;
@@ -35,6 +36,24 @@ class TransactionController extends Controller
                 'per_page' => $paginator->perPage(),
                 'total' => $paginator->total(),
                 'last_page' => $paginator->lastPage(),
+            ],
+        ]);
+    }
+
+    /**
+     * Total transactions for the authenticated user (no date filter).
+     */
+    public function count(): JsonResponse
+    {
+        $this->authorize('viewAny', Transaction::class);
+
+        $total = Transaction::query()
+            ->where('user_id', auth()->id())
+            ->count();
+
+        return response()->json([
+            'data' => [
+                'total' => $total,
             ],
         ]);
     }
@@ -104,4 +123,24 @@ class TransactionController extends Controller
             'message' => 'Lançamento excluído.',
         ]);
     }
+
+    /**
+     * Wipe all transactions for the authenticated user (typed confirmation required).
+     */
+    public function wipe(
+        WipeTransactionsRequest $request,
+        ManualTransactionService $manuals,
+    ): JsonResponse {
+        $this->authorize('wipe', Transaction::class);
+
+        $deleted = $manuals->wipeAllForUser($request->user());
+
+        return response()->json([
+            'data' => [
+                'deleted' => $deleted,
+            ],
+            'message' => 'Histórico de transações excluído.',
+        ]);
+    }
 }
+

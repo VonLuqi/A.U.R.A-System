@@ -40,6 +40,14 @@ class TransactionPolicy
         return $this->canManage($user) && $this->owns($user, $transaction);
     }
 
+    /**
+     * Wipe all transactions owned by the authenticated user.
+     */
+    public function wipe(User $user): bool
+    {
+        return $this->canManage($user);
+    }
+
     private function owns(User $user, Transaction $transaction): bool
     {
         return (int) $user->id === (int) $transaction->user_id;
@@ -50,3 +58,4 @@ class TransactionPolicy
         return $user->can('transactions.manage');
     }
 }
+

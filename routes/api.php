@@ -86,6 +86,9 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::get('/transactions', [TransactionController::class, 'index'])
             ->name('api.transactions.index');
 
+        Route::get('/transactions/count', [TransactionController::class, 'count'])
+            ->name('api.transactions.count');
+
         Route::get('/transactions/{transaction}', [TransactionController::class, 'show'])
             ->name('api.transactions.show');
 
@@ -99,6 +102,10 @@ Route::middleware(['auth', 'active'])->group(function () {
     Route::post('/transactions', [TransactionController::class, 'store'])
         ->middleware(['quota:manual_transactions', 'throttle:60,1'])
         ->name('api.transactions.store');
+
+    Route::post('/transactions/wipe', [TransactionController::class, 'wipe'])
+        ->middleware('throttle:3,60')
+        ->name('api.transactions.wipe');
 
     // Aliases / categorization rules (PLAN_EXPANSAO §4.2)
     Route::middleware('throttle:60,1')->group(function () {

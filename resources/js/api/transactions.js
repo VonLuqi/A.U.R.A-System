@@ -4,9 +4,11 @@
  * | Método | Path | Resposta |
  * | --- | --- | --- |
  * | GET | `/api/transactions` | `{ data, meta }` |
+ * | GET | `/api/transactions/count` | `{ data: { total } }` |
  * | POST | `/api/transactions` | `{ data }` · 201 |
  * | PATCH | `/api/transactions/{id}` | `{ data }` |
  * | DELETE | `/api/transactions/{id}` | `{ message }` |
+ * | POST | `/api/transactions/wipe` | `{ data: { deleted }, message }` |
  * | POST | `/api/transactions/{id}/remember-alias` | `{ data, retroactive? }` · 201 |
  *
  * @typedef {{
@@ -85,6 +87,16 @@ export async function listTransactions(params = {}, { signal } = {}) {
 }
 
 /**
+ * @param {{ signal?: AbortSignal }} [options]
+ * @returns {Promise<{ data: { total: number } }>}
+ */
+export async function countTransactions({ signal } = {}) {
+    const { data } = await api.get('/api/transactions/count', { signal });
+
+    return data;
+}
+
+/**
  * @param {TransactionWritePayload} payload
  * @returns {Promise<Transaction>}
  */
@@ -111,6 +123,16 @@ export async function updateTransaction(id, payload) {
  */
 export async function deleteTransaction(id) {
     const { data } = await api.delete(`/api/transactions/${id}`);
+
+    return data;
+}
+
+/**
+ * @param {{ confirmation: string }} payload
+ * @returns {Promise<{ data: { deleted: number }, message: string }>}
+ */
+export async function wipeAllTransactions(payload) {
+    const { data } = await api.post('/api/transactions/wipe', payload);
 
     return data;
 }

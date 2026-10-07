@@ -1,17 +1,22 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
+import { countTransactions } from '../../api/transactions';
 import { useAuth } from '../../hooks/useAuth';
 import {
     useDeleteAvatar,
     useUpdateProfile,
     useUploadAvatar,
 } from '../../hooks/useProfileMutations';
+import { useWipeAllTransactions } from '../../hooks/useTransactionMutations';
 import { cx } from '../../lib/cx';
 import { getErrorMessage, getValidationErrors } from '../../lib/errors';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Label from '../ui/Label';
 import Modal from '../ui/Modal';
+import ConfirmWipeTransactionsDialog, {
+    WIPE_CONFIRMATION_PHRASE,
+} from '../transactions/ConfirmWipeTransactionsDialog';
 import AvatarUploader from './AvatarUploader';
 
 /**
@@ -29,6 +34,12 @@ export default function ProfileSettingsModal({ open, onClose }) {
     const updateProfile = useUpdateProfile();
     const uploadAvatar = useUploadAvatar();
     const deleteAvatar = useDeleteAvatar();
+    const wipeAll = useWipeAllTransactions({
+        onSuccess: () => {
+            setWipeOpen(false);
+            onClose();
+        },
+    });
 
     const [name, setName] = useState('');
     const [passwordOpen, setPasswordOpen] = useState(false);
@@ -42,9 +53,13 @@ export default function ProfileSettingsModal({ open, onClose }) {
     const [passwordConfirmationError, setPasswordConfirmationError] = useState('');
     const [avatarError, setAvatarError] = useState('');
     const [formError, setFormError] = useState('');
+    const [wipeOpen, setWipeOpen] = useState(false);
+    const [wipeCount, setWipeCount] = useState(/** @type {number|null} */ (null));
+    const [wipeCountLoading, setWipeCountLoading] = useState(false);
 
     const submitting = updateProfile.isLoading;
     const avatarBusy = uploadAvatar.isLoading || deleteAvatar.isLoading;
+    const wipeBusy = wipeAll.isLoading;
 
     useEffect(() => {
         if (!open || !user) {
@@ -62,7 +77,36 @@ export default function ProfileSettingsModal({ open, onClose }) {
         setPasswordConfirmationError('');
         setAvatarError('');
         setFormError('');
+        setWipeOpen(false);
+        setWipeCount(null);
     }, [open, user]);
+
+    useEffect(() => {
+        if (!wipeOpen) {
+            return undefined;
+        }
+
+        const controller = new AbortController();
+        setWipeCountLoading(true);
+        setWipeCount(null);
+
+        countTransactions({ signal: controller.signal })
+            .then((response) => {
+                setWipeCount(Number(response?.data?.total ?? 0));
+            })
+            .catch(() => {
+                if (!controller.signal.aborted) {
+                    setWipeCount(null);
+                }
+            })
+            .finally(() => {
+                if (!controller.signal.aborted) {
+                    setWipeCountLoading(false);
+                }
+            });
+
+        return () => controller.abort();
+    }, [wipeOpen]);
 
     function clearFieldErrors() {
         setNameError('');
@@ -177,12 +221,13 @@ export default function ProfileSettingsModal({ open, onClose }) {
     }
 
     return (
+        <>
         <Modal
             open={open}
             title="Minha conta"
             description="Atualize seu nome, senha e foto de perfil."
             onClose={onClose}
-            closeOnScrim={!submitting && !avatarBusy}
+            closeOnScrim={!submitting && !avatarBusy && !wipeBusy && !wipeOpen}
             initialFocusRef={nameRef}
             size="md"
             footer={(
@@ -191,7 +236,7 @@ export default function ProfileSettingsModal({ open, onClose }) {
                         type="button"
                         variant="secondary"
                         size="sm"
-                        disabled={submitting || avatarBusy}
+                        disabled={submitting || avatarBusy || wipeBusy}
                         onClick={onClose}
                     >
                         Fechar
@@ -201,7 +246,7 @@ export default function ProfileSettingsModal({ open, onClose }) {
                         form={formId}
                         size="sm"
                         loading={submitting}
-                        disabled={submitting || avatarBusy}
+                        disabled={submitting || avatarBusy || wipeBusy}
                     >
                         Salvar
                     </Button>
@@ -351,7 +396,43 @@ export default function ProfileSettingsModal({ open, onClose }) {
                 {formError ? (
                     <p className="text-caption text-feedback-danger" role="alert">{formError}</p>
                 ) : null}
+
+                <div className="border-t border-feedback-danger/40 pt-4">
+                    <p className="text-body font-semibold text-feedback-danger">
+                        Zona de perigo
+                    </p>
+                    <p className="mt-1 text-caption text-ink-secondary">
+                        Exclui permanentemente todas as suas movimentações. Metas,
+                        apelidos, cartões e cobranças não são apagados.
+                    </p>
+                    <Button
+                        type="button"
+                        variant="danger"
+                        size="sm"
+                        className="mt-3"
+                        disabled={submitting || avatarBusy || wipeBusy}
+                        onClick={() => setWipeOpen(true)}
+                    >
+                        Excluir todo o histórico
+                    </Button>
+                </div>
             </form>
         </Modal>
+
+        <ConfirmWipeTransactionsDialog
+            open={wipeOpen}
+            transactionCount={wipeCount}
+            countLoading={wipeCountLoading}
+            submitting={wipeBusy}
+            onClose={() => {
+                if (!wipeBusy) {
+                    setWipeOpen(false);
+                }
+            }}
+            onConfirm={async () => {
+                await wipeAll.mutate(WIPE_CONFIRMATION_PHRASE);
+            }}
+        />
+        </>
     );
 }

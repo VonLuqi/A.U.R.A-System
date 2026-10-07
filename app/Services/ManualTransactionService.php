@@ -116,6 +116,24 @@ final class ManualTransactionService
     }
 
     /**
+     * Hard-delete every transaction for the user. Import counters are not rewritten.
+     *
+     * @return int Number of rows deleted
+     */
+    public function wipeAllForUser(User $user): int
+    {
+        return (int) DB::transaction(function () use ($user): int {
+            $deleted = Transaction::query()
+                ->where('user_id', $user->id)
+                ->delete();
+
+            $this->goalProgress->recalculateLinkedForUser((int) $user->id);
+
+            return (int) $deleted;
+        });
+    }
+
+    /**
      * @param  array<string, mixed>  $data
      */
     private function updateManual(User $actor, Transaction $transaction, array $data): Transaction

@@ -5,6 +5,7 @@ import {
     deleteTransaction,
     rememberAlias,
     updateTransaction,
+    wipeAllTransactions,
 } from '../api/transactions';
 import { getErrorMessage, getValidationErrors } from '../lib/errors';
 import { TOAST_DURATION } from '../lib/toast';
@@ -101,6 +102,44 @@ export function useDeleteTransaction({ onSuccess } = {}) {
                 const data = await deleteTransaction(id);
                 toast.success('Lançamento excluído.', { duration: TOAST_DURATION });
                 await onSuccess?.();
+                setStatus('success');
+                return data;
+            } catch (error) {
+                setStatus('error');
+                toast.error(getErrorMessage(error), { duration: TOAST_DURATION });
+                throw error;
+            }
+        },
+        [onSuccess],
+    );
+
+    return {
+        mutate,
+        status,
+        isLoading: status === 'loading',
+    };
+}
+
+/**
+ * @param {{ onSuccess?: (result: { data: { deleted: number }, message: string }) => void|Promise<void> }} [options]
+ */
+export function useWipeAllTransactions({ onSuccess } = {}) {
+    const [status, setStatus] = useState('idle');
+
+    const mutate = useCallback(
+        async (confirmation) => {
+            setStatus('loading');
+
+            try {
+                const data = await wipeAllTransactions({ confirmation });
+                const deleted = data?.data?.deleted ?? 0;
+                toast.success(
+                    deleted === 0
+                        ? 'Nenhuma transação para excluir.'
+                        : `Histórico excluído (${deleted} lançamento${deleted === 1 ? '' : 's'}).`,
+                    { duration: TOAST_DURATION },
+                );
+                await onSuccess?.(data);
                 setStatus('success');
                 return data;
             } catch (error) {
