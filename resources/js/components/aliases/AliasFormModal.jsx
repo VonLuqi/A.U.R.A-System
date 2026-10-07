@@ -323,6 +323,7 @@ export default function AliasFormModal({
                             id={`${formId}-category`}
                             categories={categories}
                             value={categoryId}
+                            type="expense"
                             disabled={submitting || categoriesLoading}
                             invalid={Boolean(fieldErrors.category_id)}
                             onChange={(next) => {

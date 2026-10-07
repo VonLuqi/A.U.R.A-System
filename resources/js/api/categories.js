@@ -1,14 +1,24 @@
 /**
- * Categories API — Etapa D §5.1 (cache em memória).
+ * Categories API — Etapa D §5.1 (cache em memória) + CRUD gestão.
  *
- * `GET /api/categories` → `{ data: Category[] }`
+ * | Método | Path | Resposta |
+ * | --- | --- | --- |
+ * | GET | `/api/categories` | `{ data: Category[] }` |
+ * | POST | `/api/categories` | `{ data }` · 201 |
+ * | PATCH | `/api/categories/{id}` | `{ data }` |
+ * | DELETE | `/api/categories/{id}` | `{ message }` |
  *
  * @typedef {{
  *   id: number,
  *   name: string,
  *   slug: string,
- *   type: string,
+ *   type: 'income'|'expense'|'transfer'|string,
  *   color: string|null,
+ *   is_system?: boolean,
+ *   transactions_count?: number,
+ *   goals_count?: number,
+ *   aliases_count?: number,
+ *   usage_count?: number,
  * }} Category
  */
 import api from './client';
@@ -58,6 +68,29 @@ export async function createCategory(payload) {
     clearCategoriesCache();
 
     return category;
+}
+
+/**
+ * @param {number|string} id
+ * @param {{ name: string, type?: string, color?: string|null }} payload
+ * @returns {Promise<Category>}
+ */
+export async function updateCategory(id, payload) {
+    const { data } = await api.patch(`/api/categories/${id}`, payload);
+    clearCategoriesCache();
+
+    return data.data;
+}
+
+/**
+ * @param {number|string} id
+ * @returns {Promise<{ message: string }>}
+ */
+export async function deleteCategory(id) {
+    const { data } = await api.delete(`/api/categories/${id}`);
+    clearCategoriesCache();
+
+    return data;
 }
 
 export function clearCategoriesCache() {

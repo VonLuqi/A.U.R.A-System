@@ -39,4 +39,20 @@ class Category extends Model
     {
         return $this->hasMany(Transaction::class);
     }
+
+    /**
+     * @return HasMany<Goal, $this>
+     */
+    public function goals(): HasMany
+    {
+        return $this->hasMany(Goal::class);
+    }
+
+    /**
+     * @return HasMany<TransactionAlias, $this>
+     */
+    public function transactionAliases(): HasMany
+    {
+        return $this->hasMany(TransactionAlias::class);
+    }
 }

@@ -10,6 +10,7 @@ import { ABILITIES, ROLES } from '../lib/auth';
 import AdminUsersPage from '../pages/AdminUsersPage';
 import AliasesPage from '../pages/AliasesPage';
 import CardsPage from '../pages/CardsPage';
+import CategoriesPage from '../pages/CategoriesPage';
 import DashboardPage from '../pages/DashboardPage';
 import GoalsPage from '../pages/GoalsPage';
 import LoansPage from '../pages/LoansPage';
@@ -63,6 +64,8 @@ export default function App() {
                             >
                                 <Route path="/aliases" element={<AliasesPage />} />
                             </Route>
+
+                            <Route path="/categories" element={<CategoriesPage />} />
 
                             <Route
                                 element={(

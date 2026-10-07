@@ -47,7 +47,7 @@ class IndexCategoriesEndpointTest extends TestCase
         $response->assertOk()
             ->assertJsonStructure([
                 'data' => [
-                    ['id', 'name', 'slug', 'type', 'color'],
+                    ['id', 'name', 'slug', 'type', 'color', 'is_system'],
                 ],
             ])
             ->assertJsonMissingPath('meta')

@@ -469,6 +469,7 @@ export default function TransactionFormModal({
                         id={`${formId}-category`}
                         categories={categories}
                         value={categoryId}
+                        type={type === 'credit' ? 'income' : 'expense'}
                         disabled={submitting || categoriesLoading}
                         invalid={Boolean(fieldErrors.category_id)}
                         onChange={(next) => {

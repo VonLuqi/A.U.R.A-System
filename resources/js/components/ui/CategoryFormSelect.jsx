@@ -16,6 +16,7 @@ import Input from '../ui/Input';
  *   value: string,
  *   onChange: (value: string) => void,
  *   onCreated?: (category: { id: number, name: string }) => void,
+ *   type?: 'income'|'expense'|'transfer'|string,
  *   disabled?: boolean,
  *   invalid?: boolean,
  *   emptyLabel?: string,
@@ -27,6 +28,7 @@ export default function CategoryFormSelect({
     value = '',
     onChange,
     onCreated,
+    type = 'expense',
     disabled = false,
     invalid = false,
     emptyLabel = 'Sem categoria',
@@ -44,7 +46,7 @@ export default function CategoryFormSelect({
 
         setBusy(true);
         try {
-            const category = await createCategory({ name, type: 'expense' });
+            const category = await createCategory({ name, type: type || 'expense' });
             onChange(String(category.id));
             onCreated?.(category);
             setNewName('');

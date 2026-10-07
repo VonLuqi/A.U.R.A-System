@@ -189,6 +189,7 @@ export const NAV_CATALOG = [
     { to: '/upload', label: 'Importar', end: false, ability: ABILITIES.statementsUpload },
     { to: '/goals', label: 'Metas', end: false, ability: ABILITIES.goalsManage, feature: 'goals' },
     { to: '/aliases', label: 'Apelidos', end: false, ability: ABILITIES.aliasesManage, feature: 'aliases' },
+    { to: '/categories', label: 'Categorias', end: false },
     {
         to: '/cards',
         label: 'Cartões',

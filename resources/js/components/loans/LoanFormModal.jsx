@@ -600,6 +600,7 @@ export default function LoanFormModal({
                                         id={`${formId}-expense-cat`}
                                         categories={categories}
                                         value={expenseCategoryId}
+                                        type="expense"
                                         disabled={submitting || categoriesLoading}
                                         invalid={Boolean(fieldErrors.expense_category_id)}
                                         emptyLabel="Sem categoria"
