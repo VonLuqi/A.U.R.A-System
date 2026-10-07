@@ -77,13 +77,10 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::get('/categories', [CategoryController::class, 'index'])
             ->name('api.categories.index');
         Route::post('/categories', [CategoryController::class, 'store'])
-            ->middleware('throttle:30,1')
             ->name('api.categories.store');
         Route::match(['patch', 'put'], '/categories/{category}', [CategoryController::class, 'update'])
-            ->middleware('throttle:30,1')
             ->name('api.categories.update');
         Route::delete('/categories/{category}', [CategoryController::class, 'destroy'])
-            ->middleware('throttle:30,1')
             ->name('api.categories.destroy');
     });
 
