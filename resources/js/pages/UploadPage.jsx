@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { uploadStatement } from '../api/statements';
 import { TOAST_DURATION_UPLOAD } from '../lib/toast';
@@ -9,6 +10,7 @@ import {
 } from '../lib/statementKinds';
 import { featureEnabled } from '../lib/auth';
 import PageHeader from '../components/layout/PageHeader';
+import Button from '../components/ui/Button';
 import ErrorState from '../components/ui/ErrorState';
 import Label from '../components/ui/Label';
 import Dropzone from '../components/upload/Dropzone';
@@ -22,6 +24,7 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle';
 
 /**
  * UploadPage — Etapa D §3.2–§3.6.3 / §5.5 / PLAN_EXPANSAO §8.4 / §9.3.
+ * Arquivo fica pendente até o usuário confirmar (tipo/cartão editáveis).
  */
 export default function UploadPage() {
     useDocumentTitle('Upload · Aura');
@@ -31,6 +34,7 @@ export default function UploadPage() {
 
     const [kind, setKind] = useState(/** @type {'checking'|'credit_card'} */ ('checking'));
     const [creditCardId, setCreditCardId] = useState('');
+    const [pendingFile, setPendingFile] = useState(/** @type {File|null} */ (null));
     const [uploading, setUploading] = useState(false);
     const [summary, setSummary] = useState(null);
     const [errorMessage, setErrorMessage] = useState('');
@@ -71,6 +75,7 @@ export default function UploadPage() {
     );
 
     const resetUpload = useCallback(() => {
+        setPendingFile(null);
         setSummary(null);
         setErrorMessage('');
         setErrorReference(null);
@@ -89,40 +94,51 @@ export default function UploadPage() {
         }
     }, []);
 
-    const handleFileAccepted = useCallback(
-        async (file) => {
-            setUploading(true);
-            setSummary(null);
-            setErrorMessage('');
-            setErrorReference(null);
-            setErrorCode(null);
+    const handleFileAccepted = useCallback((file) => {
+        setPendingFile(file);
+        setSummary(null);
+        setErrorMessage('');
+        setErrorReference(null);
+        setErrorCode(null);
+    }, []);
 
-            const option = statementKindOption(kind);
+    const handleConfirmUpload = useCallback(async () => {
+        if (!pendingFile || uploading) {
+            return;
+        }
 
-            try {
-                const data = await uploadStatement(file, {
-                    source: option.source,
-                    statement_kind: option.statement_kind,
-                    credit_card_id: creditCardId ? Number(creditCardId) : null,
-                });
-                setSummary(data);
-            } catch (error) {
-                const message = error?.message || 'Não foi possível importar o extrato.';
-                const importId = error?.importId ?? null;
-                const code = typeof error?.errorCode === 'string' ? error.errorCode : null;
+        setUploading(true);
+        setSummary(null);
+        setErrorMessage('');
+        setErrorReference(null);
+        setErrorCode(null);
 
-                setErrorMessage(message);
-                setErrorReference(importId);
-                setErrorCode(code);
-                toast.error(message, { duration: TOAST_DURATION_UPLOAD });
-            } finally {
-                setUploading(false);
-            }
-        },
-        [kind, creditCardId],
-    );
+        const option = statementKindOption(kind);
+
+        try {
+            const data = await uploadStatement(pendingFile, {
+                source: option.source,
+                statement_kind: option.statement_kind,
+                credit_card_id: creditCardId ? Number(creditCardId) : null,
+            });
+            setSummary(data);
+            setPendingFile(null);
+        } catch (error) {
+            const message = error?.message || 'Não foi possível importar o extrato.';
+            const importId = error?.importId ?? null;
+            const code = typeof error?.errorCode === 'string' ? error.errorCode : null;
+
+            setErrorMessage(message);
+            setErrorReference(importId);
+            setErrorCode(code);
+            toast.error(message, { duration: TOAST_DURATION_UPLOAD });
+        } finally {
+            setUploading(false);
+        }
+    }, [pendingFile, uploading, kind, creditCardId]);
 
     const rowErrors = summary?.row_errors ?? [];
+    const selectorsDisabled = uploading;
 
     return (
         <div className="flex flex-col gap-10">
@@ -143,7 +159,7 @@ export default function UploadPage() {
                         <StatementKindPills
                             value={kind}
                             onChange={handleKindChange}
-                            disabled={uploading}
+                            disabled={selectorsDisabled}
                             allowCreditCard={allowCreditCard}
                         />
                         {allowCardsFeature ? (
@@ -155,7 +171,7 @@ export default function UploadPage() {
                                     id="upload-credit-card"
                                     className="w-full rounded-lg border border-border bg-surface-sunken px-3 py-2.5 font-sans text-body text-ink outline-none transition-[border-color,box-shadow] focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-60"
                                     value={creditCardId}
-                                    disabled={uploading || cards.status === 'loading'}
+                                    disabled={selectorsDisabled || cards.status === 'loading'}
                                     onChange={(event) => setCreditCardId(event.target.value)}
                                 >
                                     <option value="">
@@ -182,8 +198,59 @@ export default function UploadPage() {
                     </div>
                 ) : null}
 
-                {!summary ? (
+                {!summary && !pendingFile ? (
                     <Dropzone uploading={uploading} onFileAccepted={handleFileAccepted} />
+                ) : null}
+
+                {!summary && pendingFile ? (
+                    <div
+                        className="flex flex-col gap-4 rounded-xl border border-border bg-surface-sunken px-5 py-5"
+                        aria-label="Arquivo selecionado"
+                    >
+                        <div className="flex items-start gap-3">
+                            <FileText
+                                size={22}
+                                strokeWidth={1.5}
+                                className="mt-0.5 shrink-0 text-brand"
+                                aria-hidden
+                            />
+                            <div className="min-w-0 flex-1">
+                                <p className="truncate text-body font-medium text-ink">
+                                    {pendingFile.name}
+                                </p>
+                                <p className="mt-1 text-caption text-ink-muted">
+                                    Confira o tipo e o cartão destino antes de importar.
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                                type="button"
+                                size="sm"
+                                loading={uploading}
+                                disabled={uploading}
+                                onClick={() => {
+                                    void handleConfirmUpload();
+                                }}
+                            >
+                                Confirmar importação
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                disabled={uploading}
+                                onClick={() => {
+                                    setPendingFile(null);
+                                    setErrorMessage('');
+                                    setErrorReference(null);
+                                    setErrorCode(null);
+                                }}
+                            >
+                                Trocar arquivo
+                            </Button>
+                        </div>
+                    </div>
                 ) : null}
 
                 {errorMessage ? (

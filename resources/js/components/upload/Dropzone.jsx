@@ -60,7 +60,7 @@ function rejectionMessage(rejections) {
 
 /**
  * Dropzone — Etapa D §3.3 (react-dropzone).
- * Auto-upload: onFileAccepted dispara o envio no parent.
+ * Seleciona o arquivo; o parent confirma antes de enviar.
  *
  * @param {{
  *   uploading?: boolean,
@@ -135,7 +135,7 @@ export default function Dropzone({ uploading = false, disabled = false, onFileAc
     let title = 'Arraste o arquivo aqui ou clique para selecionar';
 
     if (isDragActive && !uploading) {
-        title = 'Solte para enviar';
+        title = 'Solte para selecionar';
     }
 
     return (
