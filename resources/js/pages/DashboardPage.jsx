@@ -42,24 +42,6 @@ export default function DashboardPage() {
     const showLoans = featureEnabled(user, 'loans');
     const maxDateRangeDays = maxDateRangeDaysFor(user);
 
-    const {
-        filters,
-        apiFilters,
-        periodPreset,
-        setPeriodPreset,
-        setCustomRange,
-        setFilters,
-    } = useDashboardFilters();
-    const analytics = useDashboardAnalytics(apiFilters);
-    const previewFilters = useMemo(
-        () => ({
-            ...apiFilters,
-            page: 1,
-            per_page: PREVIEW_PER_PAGE,
-        }),
-        [apiFilters],
-    );
-    const transactions = useTransactions(previewFilters);
     const categories = useCategories();
     const creditCards = useCreditCards({
         is_active: 1,
@@ -70,6 +52,25 @@ export default function DashboardPage() {
         per_page: 100,
         enabled: showLoans,
     });
+    const {
+        filters,
+        apiFilters,
+        periodPreset,
+        setPeriodPreset,
+        setCycleOffset,
+        setCustomRange,
+        setFilters,
+    } = useDashboardFilters({ creditCards: creditCards.data });
+    const analytics = useDashboardAnalytics(apiFilters);
+    const previewFilters = useMemo(
+        () => ({
+            ...apiFilters,
+            page: 1,
+            per_page: PREVIEW_PER_PAGE,
+        }),
+        [apiFilters],
+    );
+    const transactions = useTransactions(previewFilters);
 
     const [goalFormOpen, setGoalFormOpen] = useState(false);
 
@@ -123,8 +124,10 @@ export default function DashboardPage() {
                 periodPreset={periodPreset}
                 from={filters.from}
                 to={filters.to}
+                cycleOffset={filters.cycle_offset}
                 maxDateRangeDays={maxDateRangeDays}
                 onPeriodChange={setPeriodPreset}
+                onCycleOffsetChange={setCycleOffset}
                 onCustomRange={setCustomRange}
                 type={filters.type}
                 onTypeChange={(type) => setFilters({ type })}

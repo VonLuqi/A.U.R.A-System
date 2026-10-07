@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useAuth } from './useAuth';
 import {
     PERIOD_PRESET_IDS,
     PERIOD_PRESETS,
     currentMonthRange,
+    isCyclePreset,
     normalizePeriodPreset,
+    resolveCycleRange,
     resolveGroupBy,
 } from '../lib/dates';
 
@@ -20,6 +23,7 @@ const Q_DEBOUNCE_MS = 300;
  * @property {string} from ISO YYYY-MM-DD (vazio com preset=all)
  * @property {string} to ISO YYYY-MM-DD (vazio com preset=all)
  * @property {PeriodPresetId} preset
+ * @property {number} cycle_offset
  * @property {''|'credit'|'debit'} type
  * @property {number|''} category_id
  * @property {number|''} credit_card_id
@@ -55,14 +59,6 @@ function detectPeriodPreset(from, to) {
 }
 
 /**
- * Lê filtros da URL (contrato §6.2).
- *
- * Exemplos:
- * - `?preset=last_30` → recalcula últimos 30 dias + grava from/to implicitamente no estado
- * - `?preset=all` → sem from/to (histórico completo)
- * - `?from=2026-08-01&to=2026-08-31&preset=custom` → intervalo livre
- * - (vazio) → mês corrente + `preset=current_month`
- *
  * @param {URLSearchParams} params
  * @returns {DashboardFilters}
  */
@@ -71,6 +67,10 @@ function parseFiltersFromParams(params) {
     const presetParam = normalizePeriodPreset(params.get('preset'));
     const fromParam = params.get('from') || '';
     const toParam = params.get('to') || '';
+    const offsetRaw = Number(params.get('cycle_offset') || 0);
+    const cycle_offset = Number.isFinite(offsetRaw)
+        ? Math.max(-120, Math.min(120, offsetRaw))
+        : 0;
 
     /** @type {string} */
     let from;
@@ -83,8 +83,11 @@ function parseFiltersFromParams(params) {
         from = '';
         to = '';
         preset = PERIOD_PRESET_IDS.all;
+    } else if (isCyclePreset(presetParam)) {
+        from = fromParam;
+        to = toParam;
+        preset = /** @type {PeriodPresetId} */ (presetParam);
     } else if (presetParam && presetParam !== PERIOD_PRESET_IDS.custom && PERIOD_PRESETS[presetParam]) {
-        // Named presets: always recompute relative to "today" (shareable + fresh).
         const range = PERIOD_PRESETS[presetParam]();
         from = range.from;
         to = range.to;
@@ -125,6 +128,7 @@ function parseFiltersFromParams(params) {
         from,
         to,
         preset,
+        cycle_offset: isCyclePreset(preset) ? cycle_offset : 0,
         type,
         category_id,
         credit_card_id,
@@ -139,7 +143,6 @@ function parseFiltersFromParams(params) {
 }
 
 /**
- * Serializa filtros → URLSearchParams (from/to omitidos com preset=all).
  * @param {DashboardFilters} filters
  */
 function filtersToSearchParams(filters) {
@@ -157,6 +160,10 @@ function filtersToSearchParams(filters) {
 
     if (filters.preset) {
         params.set('preset', filters.preset);
+    }
+
+    if (isCyclePreset(filters.preset) && filters.cycle_offset) {
+        params.set('cycle_offset', String(filters.cycle_offset));
     }
 
     if (filters.type) {
@@ -195,43 +202,50 @@ function filtersToSearchParams(filters) {
 }
 
 /**
- * Dashboard filters — Etapa D §4.2 / PLAN_EXPANSAO §6.2.
- *
- * ## Contrato URL / API
- *
- * | Param | Valores | Notas |
- * | --- | --- | --- |
- * | `from` / `to` | `YYYY-MM-DD` | Gravados na URL (exceto `preset=all`) |
- * | `preset` | `current_month` \| `last_30` \| `last_90` \| `all` \| `custom` | Named recomputa bounds; `all` sem datas; `custom` exige from/to |
- * | `group_by` | `day` \| `month` | Só enviado à API analytics (não na URL); ≤45 dias → `day`; all → `month` |
- * | `type` | `credit` \| `debit` | Opcional |
- * | `category_id` | int | Opcional |
- * | `credit_card_id` | int | Opcional (feature credit_cards) |
- * | `debtor_id` | int | Opcional (feature loans) |
- * | `q` | string ≤120 | Debounce 300ms em `apiFilters` |
- * | `page` / `sort` / `direction` | pagination | Só listagem |
- *
- * Exemplo custom: `?from=2026-08-01&to=2026-08-31&preset=custom`
- *
- * Sync URL via `searchParams`; `apiFilters` inclui `preset` + `group_by` para o backend.
- *
- * @returns {{
- *   filters: DashboardFilters,
- *   apiFilters: DashboardFilters,
- *   periodPreset: PeriodPresetId,
- *   setFilters: (patch: Partial<DashboardFilters>) => void,
- *   setPeriodPreset: (presetId: Exclude<PeriodPresetId, 'custom'>) => void,
- *   setCustomRange: (range: { from: string, to: string }) => void,
- *   setPage: (page: number) => void,
- * }}
+ * @param {DashboardFilters} filters
+ * @param {{ user?: object|null, creditCards?: Array<{ id: number, closing_day?: number, due_day?: number }> }} ctx
+ * @returns {DashboardFilters}
  */
-export function useDashboardFilters() {
+function withResolvedCycleBounds(filters, { user, creditCards = [] }) {
+    if (!isCyclePreset(filters.preset)) {
+        return filters;
+    }
+
+    const creditCard = creditCards.find((card) => card.id === filters.credit_card_id) ?? null;
+    const range = resolveCycleRange({
+        preset: filters.preset,
+        type: filters.type,
+        cycleOffset: filters.cycle_offset ?? 0,
+        user,
+        creditCard,
+    });
+
+    if (!range) {
+        return filters;
+    }
+
+    return {
+        ...filters,
+        from: range.from,
+        to: range.to,
+        group_by: resolveGroupBy(range.from, range.to),
+    };
+}
+
+/**
+ * Dashboard filters — Etapa D §4.2 / PLAN_EXPANSAO §6.2 + ciclos.
+ *
+ * @param {{ creditCards?: Array<{ id: number, closing_day?: number, due_day?: number }> }} [options]
+ */
+export function useDashboardFilters({ creditCards = [] } = {}) {
+    const { user } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
 
-    const filters = useMemo(
-        () => parseFiltersFromParams(searchParams),
-        [searchParams],
-    );
+    const filters = useMemo(() => {
+        const parsed = parseFiltersFromParams(searchParams);
+
+        return withResolvedCycleBounds(parsed, { user, creditCards });
+    }, [searchParams, user, creditCards]);
 
     const [debouncedQ, setDebouncedQ] = useState(filters.q);
 
@@ -256,30 +270,44 @@ export function useDashboardFilters() {
 
     const replaceFilters = useCallback(
         (next) => {
-            const preset = next.preset
-                ?? (next.from || next.to
-                    ? detectPeriodPreset(next.from ?? filters.from, next.to ?? filters.to)
-                    : filters.preset);
-
-            const from = preset === PERIOD_PRESET_IDS.all
-                ? ''
-                : (next.from ?? filters.from);
-            const to = preset === PERIOD_PRESET_IDS.all
-                ? ''
-                : (next.to ?? filters.to);
-
-            const merged = {
+            let merged = {
                 ...filters,
                 ...next,
-                from,
-                to,
-                preset,
-                group_by: resolveGroupBy(from, to),
             };
+
+            const preset = merged.preset
+                ?? (merged.from || merged.to
+                    ? detectPeriodPreset(merged.from ?? filters.from, merged.to ?? filters.to)
+                    : filters.preset);
+
+            merged.preset = preset;
+
+            if (preset === PERIOD_PRESET_IDS.all) {
+                merged.from = '';
+                merged.to = '';
+                merged.cycle_offset = 0;
+            } else if (isCyclePreset(preset)) {
+                if (!('cycle_offset' in next) && !isCyclePreset(filters.preset)) {
+                    merged.cycle_offset = 0;
+                }
+                merged = withResolvedCycleBounds(merged, { user, creditCards });
+            } else {
+                merged.cycle_offset = 0;
+                if (!('from' in next) && !('to' in next) && PERIOD_PRESETS[preset]) {
+                    const range = PERIOD_PRESETS[preset]();
+                    merged.from = range.from;
+                    merged.to = range.to;
+                } else {
+                    merged.from = next.from ?? filters.from;
+                    merged.to = next.to ?? filters.to;
+                }
+            }
+
+            merged.group_by = resolveGroupBy(merged.from, merged.to);
 
             setSearchParams(filtersToSearchParams(merged), { replace: true });
         },
-        [filters, setSearchParams],
+        [filters, setSearchParams, user, creditCards],
     );
 
     const setFilters = useCallback(
@@ -290,13 +318,30 @@ export function useDashboardFilters() {
                 next.page = 1;
             }
 
+            // Changing type / card while on a cycle preset recalculates bounds.
+            if (
+                isCyclePreset(filters.preset)
+                && (('type' in patch) || ('credit_card_id' in patch))
+                && !('preset' in patch)
+            ) {
+                next.preset = filters.preset;
+            }
+
             replaceFilters(next);
         },
-        [replaceFilters],
+        [replaceFilters, filters.preset],
     );
 
     const setPeriodPreset = useCallback(
         (presetId) => {
+            if (isCyclePreset(presetId)) {
+                setFilters({
+                    preset: presetId,
+                    cycle_offset: 0,
+                });
+                return;
+            }
+
             const range = PERIOD_PRESETS[presetId]?.();
 
             if (!range) {
@@ -307,9 +352,24 @@ export function useDashboardFilters() {
                 from: range.from,
                 to: range.to,
                 preset: presetId,
+                cycle_offset: 0,
             });
         },
         [setFilters],
+    );
+
+    const setCycleOffset = useCallback(
+        (offset) => {
+            if (!isCyclePreset(filters.preset)) {
+                return;
+            }
+
+            setFilters({
+                preset: filters.preset,
+                cycle_offset: Math.max(-120, Math.min(120, Number(offset) || 0)),
+            });
+        },
+        [filters.preset, setFilters],
     );
 
     const setPage = useCallback(
@@ -320,7 +380,6 @@ export function useDashboardFilters() {
     );
 
     /**
-     * Intervalo livre → URL `?from=…&to=…&preset=custom`.
      * @param {{ from: string, to: string }} range
      */
     const setCustomRange = useCallback(
@@ -329,7 +388,7 @@ export function useDashboardFilters() {
                 return;
             }
 
-            setFilters({ from, to, preset: PERIOD_PRESET_IDS.custom });
+            setFilters({ from, to, preset: PERIOD_PRESET_IDS.custom, cycle_offset: 0 });
         },
         [setFilters],
     );
@@ -340,6 +399,7 @@ export function useDashboardFilters() {
         periodPreset,
         setFilters,
         setPeriodPreset,
+        setCycleOffset,
         setCustomRange,
         setPage,
     };

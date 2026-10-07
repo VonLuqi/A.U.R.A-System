@@ -2,9 +2,9 @@
  * Auth helpers — PLAN_EXPANSAO §8.1 · Etapa I (avatar_url).
  *
  * Contrato `AuthUser` (GET /api/user · POST /api/login · Profile API):
- * `{ id, name, email, avatar_url, role, is_active, limits, usage, abilities[], features }`
+ * `{ id, name, email, avatar_url, expense_cycle_day, income_cycle_day, role, is_active, limits, usage, abilities[], features }`
  *
- * Self-service (Etapa I): nome / senha / avatar via ProfileController.
+ * Self-service (Etapa I): nome / senha / avatar / dias de ciclo via ProfileController.
  * `email` é **somente leitura** no self-service (alteração só via Admin, se houver).
  *
  * @typedef {'admin'|'subadmin'|'visitor'|'test'} UserRole
@@ -53,6 +53,8 @@
  *   name: string,
  *   email: string,
  *   avatar_url?: string|null,
+ *   expense_cycle_day?: number,
+ *   income_cycle_day?: number,
  *   role: UserRole|string,
  *   is_active: boolean,
  *   limits: AuthLimits,

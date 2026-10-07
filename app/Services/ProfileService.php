@@ -21,12 +21,25 @@ final class ProfileService
     private const DISK = 'public';
 
     /**
-     * @param  array{name?: string, password?: string}  $data
+     * @param  array{
+     *     name?: string,
+     *     password?: string,
+     *     expense_cycle_day?: int,
+     *     income_cycle_day?: int
+     * }  $data
      */
     public function update(User $user, array $data): User
     {
         if (array_key_exists('name', $data)) {
             $user->name = $data['name'];
+        }
+
+        if (array_key_exists('expense_cycle_day', $data)) {
+            $user->expense_cycle_day = (int) $data['expense_cycle_day'];
+        }
+
+        if (array_key_exists('income_cycle_day', $data)) {
+            $user->income_cycle_day = (int) $data['income_cycle_day'];
         }
 
         if (array_key_exists('password', $data) && is_string($data['password']) && $data['password'] !== '') {

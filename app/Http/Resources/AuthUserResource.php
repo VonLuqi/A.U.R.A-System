@@ -39,6 +39,8 @@ class AuthUserResource extends JsonResource
             'name' => (string) $this->name,
             'email' => (string) $this->email,
             'avatar_url' => $this->avatarUrl(),
+            'expense_cycle_day' => $this->expenseCycleDay(),
+            'income_cycle_day' => $this->incomeCycleDay(),
             'role' => $role,
             'is_active' => (bool) $this->is_active,
             'limits' => $snapshot,

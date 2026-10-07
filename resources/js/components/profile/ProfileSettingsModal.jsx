@@ -42,12 +42,16 @@ export default function ProfileSettingsModal({ open, onClose }) {
     });
 
     const [name, setName] = useState('');
+    const [expenseCycleDay, setExpenseCycleDay] = useState('6');
+    const [incomeCycleDay, setIncomeCycleDay] = useState('12');
     const [passwordOpen, setPasswordOpen] = useState(false);
     const [currentPassword, setCurrentPassword] = useState('');
     const [password, setPassword] = useState('');
     const [passwordConfirmation, setPasswordConfirmation] = useState('');
 
     const [nameError, setNameError] = useState('');
+    const [expenseCycleDayError, setExpenseCycleDayError] = useState('');
+    const [incomeCycleDayError, setIncomeCycleDayError] = useState('');
     const [currentPasswordError, setCurrentPasswordError] = useState('');
     const [passwordError, setPasswordError] = useState('');
     const [passwordConfirmationError, setPasswordConfirmationError] = useState('');
@@ -67,11 +71,15 @@ export default function ProfileSettingsModal({ open, onClose }) {
         }
 
         setName(user.name ?? '');
+        setExpenseCycleDay(String(user.expense_cycle_day ?? 6));
+        setIncomeCycleDay(String(user.income_cycle_day ?? 12));
         setPasswordOpen(false);
         setCurrentPassword('');
         setPassword('');
         setPasswordConfirmation('');
         setNameError('');
+        setExpenseCycleDayError('');
+        setIncomeCycleDayError('');
         setCurrentPasswordError('');
         setPasswordError('');
         setPasswordConfirmationError('');
@@ -110,6 +118,8 @@ export default function ProfileSettingsModal({ open, onClose }) {
 
     function clearFieldErrors() {
         setNameError('');
+        setExpenseCycleDayError('');
+        setIncomeCycleDayError('');
         setCurrentPasswordError('');
         setPasswordError('');
         setPasswordConfirmationError('');
@@ -123,6 +133,12 @@ export default function ProfileSettingsModal({ open, onClose }) {
 
         if (validation.name?.[0]) {
             setNameError(validation.name[0]);
+        }
+        if (validation.expense_cycle_day?.[0]) {
+            setExpenseCycleDayError(validation.expense_cycle_day[0]);
+        }
+        if (validation.income_cycle_day?.[0]) {
+            setIncomeCycleDayError(validation.income_cycle_day[0]);
         }
         if (validation.current_password?.[0]) {
             setCurrentPasswordError(validation.current_password[0]);
@@ -142,6 +158,8 @@ export default function ProfileSettingsModal({ open, onClose }) {
 
         return Boolean(
             validation.name
+            || validation.expense_cycle_day
+            || validation.income_cycle_day
             || validation.current_password
             || validation.password
             || validation.password_confirmation
@@ -159,8 +177,30 @@ export default function ProfileSettingsModal({ open, onClose }) {
             return;
         }
 
-        /** @type {{ name: string, current_password?: string, password?: string, password_confirmation?: string }} */
-        const payload = { name: trimmed };
+        const expenseDay = Number.parseInt(expenseCycleDay, 10);
+        const incomeDay = Number.parseInt(incomeCycleDay, 10);
+        if (!Number.isFinite(expenseDay) || expenseDay < 1 || expenseDay > 31) {
+            setExpenseCycleDayError('Informe um dia entre 1 e 31.');
+            return;
+        }
+        if (!Number.isFinite(incomeDay) || incomeDay < 1 || incomeDay > 31) {
+            setIncomeCycleDayError('Informe um dia entre 1 e 31.');
+            return;
+        }
+
+        /** @type {{
+         *   name: string,
+         *   expense_cycle_day: number,
+         *   income_cycle_day: number,
+         *   current_password?: string,
+         *   password?: string,
+         *   password_confirmation?: string
+         * }} */
+        const payload = {
+            name: trimmed,
+            expense_cycle_day: expenseDay,
+            income_cycle_day: incomeDay,
+        };
 
         if (passwordOpen) {
             if (!currentPassword) {
@@ -299,6 +339,59 @@ export default function ProfileSettingsModal({ open, onClose }) {
                     <p className="text-caption text-ink-muted">
                         Alteração de e-mail via administrador.
                     </p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="flex flex-col gap-1.5">
+                        <Label htmlFor={`${formId}-expense-cycle`}>Dia do ciclo de gastos</Label>
+                        <Input
+                            id={`${formId}-expense-cycle`}
+                            type="number"
+                            min={1}
+                            max={31}
+                            value={expenseCycleDay}
+                            disabled={submitting}
+                            invalid={Boolean(expenseCycleDayError)}
+                            onChange={(event) => {
+                                setExpenseCycleDay(event.target.value);
+                                setExpenseCycleDayError('');
+                            }}
+                        />
+                        {expenseCycleDayError ? (
+                            <p className="text-caption text-feedback-danger" role="alert">
+                                {expenseCycleDayError}
+                            </p>
+                        ) : (
+                            <p className="text-caption text-ink-muted">
+                                Usado em Saídas / Todos (ex.: 6).
+                            </p>
+                        )}
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                        <Label htmlFor={`${formId}-income-cycle`}>Dia do ciclo de entradas</Label>
+                        <Input
+                            id={`${formId}-income-cycle`}
+                            type="number"
+                            min={1}
+                            max={31}
+                            value={incomeCycleDay}
+                            disabled={submitting}
+                            invalid={Boolean(incomeCycleDayError)}
+                            onChange={(event) => {
+                                setIncomeCycleDay(event.target.value);
+                                setIncomeCycleDayError('');
+                            }}
+                        />
+                        {incomeCycleDayError ? (
+                            <p className="text-caption text-feedback-danger" role="alert">
+                                {incomeCycleDayError}
+                            </p>
+                        ) : (
+                            <p className="text-caption text-ink-muted">
+                                Usado em Entradas (ex.: 12).
+                            </p>
+                        )}
+                    </div>
                 </div>
 
                 <div className="border-t border-border-subtle pt-4">

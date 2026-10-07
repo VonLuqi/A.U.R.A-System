@@ -16,6 +16,10 @@ class User extends Authenticatable
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable;
 
+    public const DEFAULT_EXPENSE_CYCLE_DAY = 6;
+
+    public const DEFAULT_INCOME_CYCLE_DAY = 12;
+
     /**
      * The attributes that are mass assignable.
      *
@@ -25,6 +29,8 @@ class User extends Authenticatable
         'name',
         'email',
         'avatar_path',
+        'expense_cycle_day',
+        'income_cycle_day',
         'password',
         'role',
         'is_active',
@@ -56,10 +62,40 @@ class User extends Authenticatable
             'password' => 'hashed',
             'role' => UserRole::class,
             'is_active' => 'boolean',
+            'expense_cycle_day' => 'integer',
+            'income_cycle_day' => 'integer',
             'uploads_used' => 'integer',
             'manual_transactions_used' => 'integer',
             'quota_period_starts_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Day-of-month for expense / “Todos” cycle presets (1–31).
+     */
+    public function expenseCycleDay(): int
+    {
+        $day = $this->expense_cycle_day;
+
+        if ($day === null) {
+            return self::DEFAULT_EXPENSE_CYCLE_DAY;
+        }
+
+        return max(1, min(31, (int) $day));
+    }
+
+    /**
+     * Day-of-month for income cycle presets (1–31).
+     */
+    public function incomeCycleDay(): int
+    {
+        $day = $this->income_cycle_day;
+
+        if ($day === null) {
+            return self::DEFAULT_INCOME_CYCLE_DAY;
+        }
+
+        return max(1, min(31, (int) $day));
     }
 
     /**

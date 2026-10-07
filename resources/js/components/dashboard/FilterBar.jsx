@@ -27,8 +27,10 @@ export default function FilterBar({
     periodPreset,
     from,
     to,
+    cycleOffset = 0,
     maxDateRangeDays = null,
     onPeriodChange,
+    onCycleOffsetChange,
     onCustomRange,
     type,
     onTypeChange,
@@ -58,8 +60,14 @@ export default function FilterBar({
     const selectedDebtor = debtors.find((d) => d.id === debtorId);
     const periodLabel =
         periodPreset === PERIOD_PRESET_IDS.custom
-            ? formatRangeLabel(from, to) || PERIOD_PRESET_LABELS.custom
+        || periodPreset === PERIOD_PRESET_IDS.my_cycle
+        || periodPreset === PERIOD_PRESET_IDS.card_cycle
+            ? formatRangeLabel(from, to)
+                || PERIOD_PRESET_LABELS[periodPreset]
+                || PERIOD_PRESET_LABELS.custom
             : PERIOD_PRESET_LABELS[periodPreset] ?? 'Período';
+
+    const hasCreditCard = creditCardId !== '' && creditCardId != null;
 
     const activeFilterCount = useMemo(() => {
         let count = 0;
@@ -176,8 +184,11 @@ export default function FilterBar({
                     preset={periodPreset}
                     from={from}
                     to={to}
+                    cycleOffset={cycleOffset}
+                    hasCreditCard={hasCreditCard}
                     maxDays={maxDateRangeDays}
                     onPresetChange={onPeriodChange}
+                    onCycleOffsetChange={onCycleOffsetChange}
                     onCustomRange={onCustomRange}
                     className="shrink-0 flex-nowrap"
                 />
@@ -231,8 +242,11 @@ export default function FilterBar({
                             preset={periodPreset}
                             from={from}
                             to={to}
+                            cycleOffset={cycleOffset}
+                            hasCreditCard={hasCreditCard}
                             maxDays={maxDateRangeDays}
                             onPresetChange={onPeriodChange}
+                            onCycleOffsetChange={onCycleOffsetChange}
                             onCustomRange={onCustomRange}
                             className="flex-wrap"
                         />

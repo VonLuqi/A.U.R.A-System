@@ -64,4 +64,43 @@ class DateRangeQueryTest extends TestCase
         $this->assertSame(90, DateRangeQuery::inclusiveDaySpan('2026-01-01', '2026-03-31'));
         $this->assertSame(0, DateRangeQuery::inclusiveDaySpan('2026-09-30', '2026-09-01'));
     }
+
+    public function test_cycle_day_bounds_inclusive_and_offset(): void
+    {
+        config(['app.timezone' => 'America/Sao_Paulo']);
+        $at = CarbonImmutable::parse('2026-10-07 12:00:00', 'America/Sao_Paulo');
+
+        $this->assertSame(
+            ['2026-10-06', '2026-11-06'],
+            DateRangeQuery::cycleDayBounds(6, 0, $at)
+        );
+        $this->assertSame(
+            ['2026-09-06', '2026-10-06'],
+            DateRangeQuery::cycleDayBounds(6, -1, $at)
+        );
+
+        $beforeClose = CarbonImmutable::parse('2026-10-05 12:00:00', 'America/Sao_Paulo');
+        $this->assertSame(
+            ['2026-09-06', '2026-10-06'],
+            DateRangeQuery::cycleDayBounds(6, 0, $beforeClose)
+        );
+    }
+
+    public function test_cycle_day_bounds_clamps_february(): void
+    {
+        config(['app.timezone' => 'America/Sao_Paulo']);
+        $at = CarbonImmutable::parse('2026-02-15 12:00:00', 'America/Sao_Paulo');
+
+        $this->assertSame(
+            ['2026-01-31', '2026-02-28'],
+            DateRangeQuery::cycleDayBounds(31, 0, $at)
+        );
+    }
+
+    public function test_cycle_day_for_type(): void
+    {
+        $this->assertSame(6, DateRangeQuery::cycleDayForType(null, 6, 12));
+        $this->assertSame(6, DateRangeQuery::cycleDayForType('debit', 6, 12));
+        $this->assertSame(12, DateRangeQuery::cycleDayForType('credit', 6, 12));
+    }
 }

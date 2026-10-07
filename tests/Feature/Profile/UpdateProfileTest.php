@@ -43,6 +43,40 @@ class UpdateProfileTest extends TestCase
         $this->assertSame('Nome Novo', $user->fresh()->name);
     }
 
+    public function test_authenticated_user_updates_cycle_days(): void
+    {
+        $user = User::factory()->create([
+            'expense_cycle_day' => null,
+            'income_cycle_day' => null,
+        ]);
+
+        $this->actingAs($user)
+            ->patchJson('/api/profile', [
+                'expense_cycle_day' => 6,
+                'income_cycle_day' => 12,
+            ])
+            ->assertOk()
+            ->assertJsonPath('user.expense_cycle_day', 6)
+            ->assertJsonPath('user.income_cycle_day', 12);
+
+        $fresh = $user->fresh();
+        $this->assertSame(6, $fresh->expense_cycle_day);
+        $this->assertSame(12, $fresh->income_cycle_day);
+    }
+
+    public function test_cycle_days_must_be_between_1_and_31(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->patchJson('/api/profile', [
+                'expense_cycle_day' => 0,
+                'income_cycle_day' => 32,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['expense_cycle_day', 'income_cycle_day']);
+    }
+
     public function test_password_change_requires_correct_current_password(): void
     {
         $user = User::factory()->create([

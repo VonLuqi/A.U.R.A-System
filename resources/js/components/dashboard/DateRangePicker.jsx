@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { CalendarRange } from 'lucide-react';
+import { CalendarRange, ChevronLeft, ChevronRight } from 'lucide-react';
 import { DayPicker } from 'react-day-picker';
 import { ptBR } from 'react-day-picker/locale';
 import { toast } from 'sonner';
@@ -11,6 +11,7 @@ import {
     daysBetween,
     formatIsoDate,
     formatRangeLabel,
+    isCyclePreset,
     isWithinDateRangeLimit,
     parseIsoDate,
 } from '../../lib/dates';
@@ -25,6 +26,8 @@ const NAMED_OPTIONS = [
     { id: PERIOD_PRESET_IDS.current_month, label: 'Este mês' },
     { id: PERIOD_PRESET_IDS.last_30, label: '30 dias' },
     { id: PERIOD_PRESET_IDS.last_90, label: '90 dias' },
+    { id: PERIOD_PRESET_IDS.my_cycle, label: 'Meu ciclo' },
+    { id: PERIOD_PRESET_IDS.card_cycle, label: 'Ciclo do cartão' },
     { id: PERIOD_PRESET_IDS.all, label: 'Todo o histórico' },
 ];
 
@@ -40,8 +43,11 @@ const POPOVER_WIDTH_PX = 352;
  *   preset: string,
  *   from: string,
  *   to: string,
+ *   cycleOffset?: number,
+ *   hasCreditCard?: boolean,
  *   maxDays?: number|null,
  *   onPresetChange: (presetId: string) => void,
+ *   onCycleOffsetChange?: (offset: number) => void,
  *   onCustomRange: (range: { from: string, to: string }) => void,
  *   className?: string,
  * }} props
@@ -50,8 +56,11 @@ export default function DateRangePicker({
     preset,
     from,
     to,
+    cycleOffset = 0,
+    hasCreditCard = false,
     maxDays = null,
     onPresetChange,
+    onCycleOffsetChange,
     onCustomRange,
     className = '',
 }) {
@@ -68,6 +77,7 @@ export default function DateRangePicker({
     const [anchor, setAnchor] = useState({ top: 0, left: 0 });
 
     const isCustom = preset === PERIOD_PRESET_IDS.custom;
+    const cycleActive = isCyclePreset(preset);
     const limitTitle =
         maxDays != null
             ? `Máximo de ${maxDays} dias para o seu perfil`
@@ -154,6 +164,17 @@ export default function DateRangePicker({
                 return;
             }
 
+            setOpen(false);
+            onPresetChange(presetId);
+            return;
+        }
+
+        if (presetId === PERIOD_PRESET_IDS.card_cycle && !hasCreditCard) {
+            toast.error('Selecione um cartão.', { duration: TOAST_DURATION });
+            return;
+        }
+
+        if (isCyclePreset(presetId)) {
             setOpen(false);
             onPresetChange(presetId);
             return;
@@ -372,19 +393,28 @@ export default function DateRangePicker({
             {NAMED_OPTIONS.filter(
                 (option) => option.id !== PERIOD_PRESET_IDS.all || maxDays == null,
             ).map((option) => {
-                const range = PERIOD_PRESETS[option.id]();
+                const range = PERIOD_PRESETS[option.id]?.();
                 const exceeds =
-                    option.id !== PERIOD_PRESET_IDS.all &&
-                    maxDays != null &&
-                    !isWithinDateRangeLimit(range.from, range.to, maxDays);
+                    range
+                    && option.id !== PERIOD_PRESET_IDS.all
+                    && maxDays != null
+                    && !isWithinDateRangeLimit(range.from, range.to, maxDays);
+                const cardBlocked =
+                    option.id === PERIOD_PRESET_IDS.card_cycle && !hasCreditCard;
 
                 return (
                     <Pill
                         key={option.id}
                         active={preset === option.id}
-                        title={exceeds ? limitTitle : undefined}
-                        aria-disabled={exceeds || undefined}
-                        className={exceeds ? 'opacity-60' : undefined}
+                        title={
+                            cardBlocked
+                                ? 'Selecione um cartão'
+                                : exceeds
+                                    ? limitTitle
+                                    : undefined
+                        }
+                        aria-disabled={exceeds || cardBlocked || undefined}
+                        className={exceeds || cardBlocked ? 'opacity-60' : undefined}
                         onClick={() => handleNamedPreset(option.id)}
                     >
                         {option.label}
@@ -405,6 +435,36 @@ export default function DateRangePicker({
                 <CalendarRange size={14} strokeWidth={1.75} aria-hidden className="shrink-0" />
                 <span className="truncate">{customLabel}</span>
             </Pill>
+
+            {cycleActive && onCycleOffsetChange ? (
+                <div className="flex items-center gap-1" role="group" aria-label="Navegar ciclo">
+                    <button
+                        type="button"
+                        className={cx(
+                            'inline-flex h-9 w-9 items-center justify-center rounded-full text-ink-secondary transition',
+                            'hover:bg-surface-raised hover:text-ink',
+                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
+                        )}
+                        aria-label="Ciclo anterior"
+                        onClick={() => onCycleOffsetChange(cycleOffset - 1)}
+                    >
+                        <ChevronLeft size={16} strokeWidth={1.75} aria-hidden />
+                    </button>
+                    <button
+                        type="button"
+                        className={cx(
+                            'inline-flex h-9 w-9 items-center justify-center rounded-full text-ink-secondary transition',
+                            'hover:bg-surface-raised hover:text-ink',
+                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
+                        )}
+                        aria-label="Próximo ciclo"
+                        disabled={cycleOffset >= 0}
+                        onClick={() => onCycleOffsetChange(Math.min(0, cycleOffset + 1))}
+                    >
+                        <ChevronRight size={16} strokeWidth={1.75} aria-hidden />
+                    </button>
+                </div>
+            ) : null}
 
             {popover}
         </div>

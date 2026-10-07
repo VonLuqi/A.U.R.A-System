@@ -22,8 +22,16 @@ final class DateRangeQuery
 
     public const PRESET_CUSTOM = 'custom';
 
+    public const PRESET_MY_CYCLE = 'my_cycle';
+
+    public const PRESET_CARD_CYCLE = 'card_cycle';
+
     /** Inclusive day span at or below this → series group_by=day. */
     public const GROUP_BY_DAY_MAX_DAYS = 45;
+
+    public const DEFAULT_EXPENSE_CYCLE_DAY = 6;
+
+    public const DEFAULT_INCOME_CYCLE_DAY = 12;
 
     /** @var list<string> */
     public const PRESETS = [
@@ -32,15 +40,23 @@ final class DateRangeQuery
         self::PRESET_LAST_90,
         self::PRESET_ALL,
         self::PRESET_CUSTOM,
+        self::PRESET_MY_CYCLE,
+        self::PRESET_CARD_CYCLE,
     ];
 
-    /** Named presets that compute from/to (not custom / all). */
+    /** Named presets that compute from/to without extra context (not custom / all / cycles). */
     /** @var list<string> */
     public const COMPUTED_PRESETS = [
         self::PRESET_CURRENT_MONTH,
         self::PRESET_LAST_30,
         self::PRESET_LAST_90,
         self::PRESET_ALL,
+    ];
+
+    /** @var list<string> */
+    public const CYCLE_PRESETS = [
+        self::PRESET_MY_CYCLE,
+        self::PRESET_CARD_CYCLE,
     ];
 
     /**
@@ -74,7 +90,52 @@ final class DateRangeQuery
     }
 
     /**
-     * @return array{0: string, 1: string}|null Null for custom/all (caller supplies or omits from/to).
+     * Inclusive cycle from day-of-month D to the next month's D (clamped).
+     * Offset 0 = cycle containing `$at`; negative = previous cycles.
+     *
+     * @return array{0: string, 1: string} [from, to] Y-m-d
+     */
+    public static function cycleDayBounds(int $day, int $offset = 0, ?DateTimeInterface $at = null): array
+    {
+        $now = self::now($at)->startOfDay();
+        $day = max(1, min(31, $day));
+        $offset = max(-120, min(120, $offset));
+
+        $start = self::dateOnMonth($now->year, $now->month, $day);
+        if ($start->gt($now)) {
+            $prev = $now->subMonthNoOverflow()->startOfMonth();
+            $start = self::dateOnMonth($prev->year, $prev->month, $day);
+        }
+
+        if ($offset !== 0) {
+            $shifted = $start->addMonthsNoOverflow($offset)->startOfMonth();
+            $start = self::dateOnMonth($shifted->year, $shifted->month, $day);
+        }
+
+        $endMonth = $start->addMonthNoOverflow()->startOfMonth();
+        $end = self::dateOnMonth($endMonth->year, $endMonth->month, $day);
+
+        return [
+            $start->format('Y-m-d'),
+            $end->format('Y-m-d'),
+        ];
+    }
+
+    /**
+     * Day for my_cycle / card_cycle given transaction type filter.
+     * credit → income/due day; debit or empty → expense/closing day.
+     */
+    public static function cycleDayForType(?string $type, int $expenseOrClosingDay, int $incomeOrDueDay): int
+    {
+        if ($type === 'credit') {
+            return max(1, min(31, $incomeOrDueDay));
+        }
+
+        return max(1, min(31, $expenseOrClosingDay));
+    }
+
+    /**
+     * @return array{0: string, 1: string}|null Null for custom/all/cycles (caller supplies).
      */
     public static function boundsForPreset(string $preset, ?DateTimeInterface $at = null): ?array
     {
@@ -85,6 +146,11 @@ final class DateRangeQuery
             self::PRESET_ALL => null,
             default => null,
         };
+    }
+
+    public static function isCyclePreset(?string $preset): bool
+    {
+        return in_array($preset, self::CYCLE_PRESETS, true);
     }
 
     /**
@@ -133,6 +199,15 @@ final class DateRangeQuery
         }
 
         return $preset;
+    }
+
+    private static function dateOnMonth(int $year, int $month, int $day): CarbonImmutable
+    {
+        $tz = (string) config('app.timezone');
+        $base = CarbonImmutable::create($year, $month, 1, 0, 0, 0, $tz);
+        $clamped = min($day, $base->daysInMonth);
+
+        return $base->day($clamped)->startOfDay();
     }
 
     private static function now(?DateTimeInterface $at = null): CarbonImmutable

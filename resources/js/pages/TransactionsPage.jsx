@@ -50,16 +50,6 @@ export default function TransactionsPage() {
     const [view, setView] = useState(/** @type {'movements'|'plans'} */ ('movements'));
     const [openPlanId, setOpenPlanId] = useState(/** @type {number|null} */ (null));
 
-    const {
-        filters,
-        apiFilters,
-        periodPreset,
-        setPeriodPreset,
-        setCustomRange,
-        setFilters,
-        setPage,
-    } = useDashboardFilters();
-    const transactions = useTransactions(apiFilters);
     const categories = useCategories();
     const creditCards = useCreditCards({
         is_active: 1,
@@ -70,6 +60,17 @@ export default function TransactionsPage() {
         per_page: 100,
         enabled: showLoans,
     });
+    const {
+        filters,
+        apiFilters,
+        periodPreset,
+        setPeriodPreset,
+        setCycleOffset,
+        setCustomRange,
+        setFilters,
+        setPage,
+    } = useDashboardFilters({ creditCards: creditCards.data });
+    const transactions = useTransactions(apiFilters);
 
     const [formState, setFormState] = useState(null);
     const [deleteTarget, setDeleteTarget] = useState(null);
@@ -191,8 +192,10 @@ export default function TransactionsPage() {
                         periodPreset={periodPreset}
                         from={filters.from}
                         to={filters.to}
+                        cycleOffset={filters.cycle_offset}
                         maxDateRangeDays={maxDateRangeDays}
                         onPeriodChange={setPeriodPreset}
+                        onCycleOffsetChange={setCycleOffset}
                         onCustomRange={setCustomRange}
                         type={filters.type}
                         onTypeChange={(type) => setFilters({ type })}

@@ -3,12 +3,16 @@
  *
  * Contrato API (query string compartilhado com analytics + transactions):
  * - `from` / `to`: ISO `YYYY-MM-DD` (juntos; omitidos → mês corrente no backend)
- * - `preset`: `current_month` | `last_30` | `last_90` | `all` | `custom`
+ * - `preset`: `current_month` | `last_30` | `last_90` | `all` | `custom` | `my_cycle` | `card_cycle`
  *   - named: backend recalcula bounds; frontend grava `from`+`to`+`preset` na URL
  *   - `all`: sem from/to (histórico completo; só papéis com intervalo ilimitado)
  *   - `custom`: exige `from`+`to` (ex.: `?from=2026-08-01&to=2026-08-31&preset=custom`)
+ *   - cycles: `cycle_offset` + dia (prefs / cartão) + `type`
  * - `group_by` (só analytics): `day` | `month`; omitido → ≤45 dias inclusivos → `day`; all → month
  */
+
+export const DEFAULT_EXPENSE_CYCLE_DAY = 6;
+export const DEFAULT_INCOME_CYCLE_DAY = 12;
 
 function pad(n) {
     return String(n).padStart(2, '0');
@@ -70,7 +74,7 @@ export function resolveGroupBy(from, to) {
     return daysBetween(from, to) <= 45 ? 'day' : 'month';
 }
 
-/** @typedef {'current_month'|'last_30'|'last_90'|'all'|'custom'} PeriodPresetId */
+/** @typedef {'current_month'|'last_30'|'last_90'|'all'|'custom'|'my_cycle'|'card_cycle'} PeriodPresetId */
 
 export const PERIOD_PRESET_IDS = {
     current_month: 'current_month',
@@ -78,9 +82,11 @@ export const PERIOD_PRESET_IDS = {
     last_90: 'last_90',
     all: 'all',
     custom: 'custom',
+    my_cycle: 'my_cycle',
+    card_cycle: 'card_cycle',
 };
 
-/** @type {Record<Exclude<PeriodPresetId, 'custom'>, () => { from: string, to: string }>} */
+/** @type {Record<Exclude<PeriodPresetId, 'custom'|'my_cycle'|'card_cycle'>, () => { from: string, to: string }>} */
 export const PERIOD_PRESETS = {
     current_month: () => currentMonthRange(),
     last_30: () => lastNDaysRange(30),
@@ -94,7 +100,121 @@ export const PERIOD_PRESET_LABELS = {
     last_90: 'Últimos 90 dias',
     all: 'Todo o histórico',
     custom: 'Personalizado',
+    my_cycle: 'Meu ciclo',
+    card_cycle: 'Ciclo do cartão',
 };
+
+/**
+ * @param {string|null|undefined} preset
+ * @returns {boolean}
+ */
+export function isCyclePreset(preset) {
+    return preset === PERIOD_PRESET_IDS.my_cycle || preset === PERIOD_PRESET_IDS.card_cycle;
+}
+
+/**
+ * Clamp day-of-month to the last valid day of that month.
+ * @param {number} year
+ * @param {number} monthIndex 0–11
+ * @param {number} day
+ * @returns {Date}
+ */
+function dateOnMonth(year, monthIndex, day) {
+    const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+    const clamped = Math.min(Math.max(1, day), daysInMonth);
+
+    return new Date(year, monthIndex, clamped);
+}
+
+/**
+ * Inclusive cycle day D → next month D. Offset 0 = cycle containing `now`.
+ *
+ * @param {number} day
+ * @param {number} [offset]
+ * @param {Date} [now]
+ * @returns {{ from: string, to: string }}
+ */
+export function cycleDayRange(day, offset = 0, now = new Date()) {
+    const safeDay = Math.max(1, Math.min(31, Number(day) || 1));
+    const safeOffset = Math.max(-120, Math.min(120, Number(offset) || 0));
+    const today = startOfDay(now);
+
+    let start = dateOnMonth(today.getFullYear(), today.getMonth(), safeDay);
+    if (start.getTime() > today.getTime()) {
+        const prev = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        start = dateOnMonth(prev.getFullYear(), prev.getMonth(), safeDay);
+    }
+
+    if (safeOffset !== 0) {
+        const shifted = new Date(start.getFullYear(), start.getMonth() + safeOffset, 1);
+        start = dateOnMonth(shifted.getFullYear(), shifted.getMonth(), safeDay);
+    }
+
+    const endBase = new Date(start.getFullYear(), start.getMonth() + 1, 1);
+    const end = dateOnMonth(endBase.getFullYear(), endBase.getMonth(), safeDay);
+
+    return { from: toIsoDate(start), to: toIsoDate(end) };
+}
+
+/**
+ * @param {''|'credit'|'debit'|null|undefined} type
+ * @param {number} expenseOrClosingDay
+ * @param {number} incomeOrDueDay
+ * @returns {number}
+ */
+export function cycleDayForType(type, expenseOrClosingDay, incomeOrDueDay) {
+    if (type === 'credit') {
+        return Math.max(1, Math.min(31, Number(incomeOrDueDay) || DEFAULT_INCOME_CYCLE_DAY));
+    }
+
+    return Math.max(1, Math.min(31, Number(expenseOrClosingDay) || DEFAULT_EXPENSE_CYCLE_DAY));
+}
+
+/**
+ * @param {{
+ *   preset: PeriodPresetId|string,
+ *   type?: ''|'credit'|'debit'|null,
+ *   cycleOffset?: number,
+ *   user?: { expense_cycle_day?: number|null, income_cycle_day?: number|null }|null,
+ *   creditCard?: { closing_day?: number, due_day?: number }|null,
+ *   now?: Date,
+ * }} args
+ * @returns {{ from: string, to: string }|null}
+ */
+export function resolveCycleRange({
+    preset,
+    type = '',
+    cycleOffset = 0,
+    user = null,
+    creditCard = null,
+    now = new Date(),
+}) {
+    if (preset === PERIOD_PRESET_IDS.my_cycle) {
+        const day = cycleDayForType(
+            type,
+            user?.expense_cycle_day ?? DEFAULT_EXPENSE_CYCLE_DAY,
+            user?.income_cycle_day ?? DEFAULT_INCOME_CYCLE_DAY,
+        );
+
+        return cycleDayRange(day, cycleOffset, now);
+    }
+
+    if (preset === PERIOD_PRESET_IDS.card_cycle) {
+        if (!creditCard) {
+            return null;
+        }
+
+        const day = cycleDayForType(
+            type,
+            creditCard.closing_day ?? DEFAULT_EXPENSE_CYCLE_DAY,
+            creditCard.due_day ?? DEFAULT_INCOME_CYCLE_DAY,
+        );
+
+        return cycleDayRange(day, cycleOffset, now);
+    }
+
+    return null;
+}
 
 /**
  * @param {string|null|undefined} raw

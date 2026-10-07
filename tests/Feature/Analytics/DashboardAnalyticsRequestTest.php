@@ -4,6 +4,7 @@ namespace Tests\Feature\Analytics;
 
 use App\Http\Requests\Analytics\DashboardAnalyticsRequest;
 use App\Models\Category;
+use App\Models\CreditCard;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -170,5 +171,82 @@ class DashboardAnalyticsRequestTest extends TestCase
 
         $this->assertSame('2026-02-01', $from);
         $this->assertSame('2026-02-28', $to);
+    }
+
+    public function test_preset_my_cycle_uses_expense_day_and_switches_on_type(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-07 12:00:00', 'America/Sao_Paulo'));
+        config(['app.timezone' => 'America/Sao_Paulo']);
+
+        $user = User::factory()->admin()->create([
+            'expense_cycle_day' => 6,
+            'income_cycle_day' => 12,
+        ]);
+
+        try {
+            $this->actingAs($user)
+                ->getJson('/api/analytics/dashboard?preset=my_cycle&type=debit')
+                ->assertOk()
+                ->assertJsonPath('data.filters.from', '2026-10-06')
+                ->assertJsonPath('data.filters.to', '2026-11-06')
+                ->assertJsonPath('data.filters.preset', 'my_cycle');
+
+            $this->actingAs($user)
+                ->getJson('/api/analytics/dashboard?preset=my_cycle&type=credit')
+                ->assertOk()
+                ->assertJsonPath('data.filters.from', '2026-09-12')
+                ->assertJsonPath('data.filters.to', '2026-10-12')
+                ->assertJsonPath('data.filters.preset', 'my_cycle');
+
+            $this->actingAs($user)
+                ->getJson('/api/analytics/dashboard?preset=my_cycle&cycle_offset=-1')
+                ->assertOk()
+                ->assertJsonPath('data.filters.from', '2026-09-06')
+                ->assertJsonPath('data.filters.to', '2026-10-06');
+        } finally {
+            CarbonImmutable::setTestNow();
+        }
+    }
+
+    public function test_preset_card_cycle_requires_own_card_and_uses_closing_or_due(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-07 12:00:00', 'America/Sao_Paulo'));
+        config(['app.timezone' => 'America/Sao_Paulo']);
+
+        $user = User::factory()->admin()->create();
+        $card = CreditCard::factory()->create([
+            'user_id' => $user->id,
+            'closing_day' => 6,
+            'due_day' => 12,
+        ]);
+
+        try {
+            $this->actingAs($user)
+                ->getJson('/api/analytics/dashboard?preset=card_cycle')
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors(['credit_card_id']);
+
+            $this->actingAs($user)
+                ->getJson('/api/analytics/dashboard?'.http_build_query([
+                    'preset' => 'card_cycle',
+                    'credit_card_id' => $card->id,
+                    'type' => 'debit',
+                ]))
+                ->assertOk()
+                ->assertJsonPath('data.filters.from', '2026-10-06')
+                ->assertJsonPath('data.filters.to', '2026-11-06');
+
+            $this->actingAs($user)
+                ->getJson('/api/analytics/dashboard?'.http_build_query([
+                    'preset' => 'card_cycle',
+                    'credit_card_id' => $card->id,
+                    'type' => 'credit',
+                ]))
+                ->assertOk()
+                ->assertJsonPath('data.filters.from', '2026-09-12')
+                ->assertJsonPath('data.filters.to', '2026-10-12');
+        } finally {
+            CarbonImmutable::setTestNow();
+        }
     }
 }

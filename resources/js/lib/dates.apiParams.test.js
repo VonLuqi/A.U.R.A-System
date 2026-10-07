@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { cleanApiParams, toAnalyticsParams, toTransactionsParams } from './apiParams.js';
 import {
+    cycleDayForType,
+    cycleDayRange,
     dateRangeLimitMessage,
     daysBetween,
     formatRangeLabel,
@@ -16,8 +18,18 @@ describe('dates §6.2', () => {
         expect(normalizePeriodPreset('custom')).toBe('custom');
         expect(normalizePeriodPreset('LAST_30')).toBe('last_30');
         expect(normalizePeriodPreset('all')).toBe('all');
+        expect(normalizePeriodPreset('my_cycle')).toBe('my_cycle');
+        expect(normalizePeriodPreset('card_cycle')).toBe('card_cycle');
         expect(normalizePeriodPreset('ytd')).toBeNull();
         expect(normalizePeriodPreset('')).toBeNull();
+    });
+
+    it('computes inclusive cycle day ranges', () => {
+        const now = new Date(2026, 9, 7); // 7 Oct 2026
+        expect(cycleDayRange(6, 0, now)).toEqual({ from: '2026-10-06', to: '2026-11-06' });
+        expect(cycleDayRange(6, -1, now)).toEqual({ from: '2026-09-06', to: '2026-10-06' });
+        expect(cycleDayForType('credit', 6, 12)).toBe(12);
+        expect(cycleDayForType('debit', 6, 12)).toBe(6);
     });
 
     it('resolveGroupBy uses inclusive 45-day threshold', () => {

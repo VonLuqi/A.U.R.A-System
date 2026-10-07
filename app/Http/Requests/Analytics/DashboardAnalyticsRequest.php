@@ -13,7 +13,8 @@ use Illuminate\Validation\Rule;
  * Query params for GET /api/analytics/dashboard (Etapa C §5.5.1 / PLAN_EXPANSAO §6.1).
  *
  * from/to: required together, or both omitted → current month in APP_TIMEZONE.
- * preset: current_month|last_30|last_90|all|custom (custom exige from/to; all omite datas).
+ * preset: current_month|last_30|last_90|all|custom|my_cycle|card_cycle
+ * (custom exige from/to; all omite datas; cycles recalculam; card_cycle exige credit_card_id).
  * group_by: optional; when omitted → DateRangeQuery::resolveGroupBy (≤45 days → day); all → month.
  */
 class DashboardAnalyticsRequest extends FormRequest
@@ -36,6 +37,8 @@ class DashboardAnalyticsRequest extends FormRequest
         $preset = DateRangeQuery::normalizePreset($this->input('preset'));
         $customRequiresDates = $preset === DateRangeQuery::PRESET_CUSTOM;
         $isAll = $preset === DateRangeQuery::PRESET_ALL;
+        $isCardCycle = $preset === DateRangeQuery::PRESET_CARD_CYCLE;
+        $userId = $this->user()?->id;
 
         return [
             'preset' => [
@@ -44,6 +47,7 @@ class DashboardAnalyticsRequest extends FormRequest
                 Rule::in(DateRangeQuery::PRESETS),
                 new AllTimeRequiresUnlimitedDateRange($this->user()),
             ],
+            'cycle_offset' => ['nullable', 'integer', 'min:-120', 'max:120'],
             'from' => [
                 $customRequiresDates ? 'required' : 'nullable',
                 $isAll ? 'nullable' : 'required_with:to',
@@ -61,7 +65,13 @@ class DashboardAnalyticsRequest extends FormRequest
             ],
             'type' => ['nullable', 'string', Rule::in(['credit', 'debit'])],
             'category_id' => ['nullable', 'integer', 'exists:categories,id'],
-            'credit_card_id' => ['nullable', 'integer', 'exists:credit_cards,id'],
+            'credit_card_id' => [
+                $isCardCycle ? 'required' : 'nullable',
+                'integer',
+                Rule::exists('credit_cards', 'id')->where(
+                    fn ($query) => $userId !== null ? $query->where('user_id', $userId) : $query->whereRaw('0=1')
+                ),
+            ],
             'debtor_id' => ['nullable', 'integer', 'exists:debtors,id'],
             'q' => ['nullable', 'string', 'max:120'],
             'group_by' => ['nullable', 'string', Rule::in(self::GROUP_BY)],
@@ -82,10 +92,11 @@ class DashboardAnalyticsRequest extends FormRequest
             'to.after_or_equal' => 'A data final deve ser posterior ou igual à data inicial.',
             'type.in' => 'O tipo deve ser credit ou debit.',
             'category_id.exists' => 'Categoria inválida.',
+            'credit_card_id.required' => 'Selecione um cartão para o ciclo do cartão.',
             'credit_card_id.exists' => 'Cartão inválido.',
             'debtor_id.exists' => 'Pessoa inválida.',
             'group_by.in' => 'group_by inválido. Use day ou month.',
-            'preset.in' => 'preset inválido. Use current_month, last_30, last_90, all ou custom.',
+            'preset.in' => 'preset inválido. Use current_month, last_30, last_90, all, custom, my_cycle ou card_cycle.',
             'to' => 'O intervalo de datas excede o limite do seu perfil.',
         ];
     }
