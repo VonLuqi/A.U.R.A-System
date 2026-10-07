@@ -40,6 +40,14 @@ class DateRangeQueryTest extends TestCase
             DateRangeQuery::boundsForPreset('current_month', $at)
         );
         $this->assertNull(DateRangeQuery::boundsForPreset('custom', $at));
+        $this->assertNull(DateRangeQuery::boundsForPreset('all', $at));
+    }
+
+    public function test_all_is_allowed_preset(): void
+    {
+        $this->assertTrue(DateRangeQuery::isAllowedPreset('all'));
+        $this->assertSame('all', DateRangeQuery::normalizePreset('all'));
+        $this->assertContains(DateRangeQuery::PRESET_ALL, DateRangeQuery::PRESETS);
     }
 
     public function test_resolve_group_by_threshold_45_days(): void

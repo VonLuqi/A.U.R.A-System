@@ -85,6 +85,45 @@ class IndexTransactionsRequestTest extends TestCase
             ->assertJsonValidationErrors(['from', 'to']);
     }
 
+    public function test_preset_all_returns_transactions_across_months(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-07 12:00:00', 'America/Sao_Paulo'));
+        config(['app.timezone' => 'America/Sao_Paulo']);
+
+        $user = User::factory()->admin()->create();
+        $import = StatementImport::factory()->for($user)->create();
+
+        Transaction::factory()->for($import, 'statementImport')->create([
+            'user_id' => $user->id,
+            'occurred_on' => '2026-09-10',
+            'description' => 'September row',
+        ]);
+        Transaction::factory()->for($import, 'statementImport')->create([
+            'user_id' => $user->id,
+            'occurred_on' => '2026-10-02',
+            'description' => 'October row',
+        ]);
+
+        try {
+            $this->actingAs($user)
+                ->getJson('/api/transactions?preset=all')
+                ->assertOk()
+                ->assertJsonPath('meta.total', 2);
+        } finally {
+            CarbonImmutable::setTestNow();
+        }
+    }
+
+    public function test_visitor_preset_all_returns_422(): void
+    {
+        $visitor = User::factory()->visitor()->create();
+
+        $this->actingAs($visitor)
+            ->getJson('/api/transactions?preset=all')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['preset']);
+    }
+
     public function test_accepts_valid_filter_combination(): void
     {
         $user = User::factory()->create();

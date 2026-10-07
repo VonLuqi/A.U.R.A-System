@@ -7,7 +7,7 @@ import Button from './Button';
  */
 export const EMPTY_COPY = {
     period: {
-        title: 'Nenhum dado neste mês',
+        title: 'Nenhum dado neste período',
         description: 'Ajuste o período ou importe um extrato.',
     },
     account: {

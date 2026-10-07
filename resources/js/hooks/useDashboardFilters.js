@@ -17,8 +17,8 @@ const Q_DEBOUNCE_MS = 300;
  * @typedef {import('../lib/dates').PeriodPresetId} PeriodPresetId
  *
  * @typedef {object} DashboardFilters
- * @property {string} from ISO YYYY-MM-DD
- * @property {string} to ISO YYYY-MM-DD
+ * @property {string} from ISO YYYY-MM-DD (vazio com preset=all)
+ * @property {string} to ISO YYYY-MM-DD (vazio com preset=all)
  * @property {PeriodPresetId} preset
  * @property {''|'credit'|'debit'} type
  * @property {number|''} category_id
@@ -40,6 +40,10 @@ const Q_DEBOUNCE_MS = 300;
  */
 function detectPeriodPreset(from, to) {
     for (const id of Object.keys(PERIOD_PRESETS)) {
+        if (id === PERIOD_PRESET_IDS.all) {
+            continue;
+        }
+
         const range = PERIOD_PRESETS[id]();
 
         if (range.from === from && range.to === to) {
@@ -55,6 +59,7 @@ function detectPeriodPreset(from, to) {
  *
  * Exemplos:
  * - `?preset=last_30` → recalcula últimos 30 dias + grava from/to implicitamente no estado
+ * - `?preset=all` → sem from/to (histórico completo)
  * - `?from=2026-08-01&to=2026-08-31&preset=custom` → intervalo livre
  * - (vazio) → mês corrente + `preset=current_month`
  *
@@ -74,7 +79,11 @@ function parseFiltersFromParams(params) {
     /** @type {PeriodPresetId} */
     let preset;
 
-    if (presetParam && presetParam !== PERIOD_PRESET_IDS.custom && PERIOD_PRESETS[presetParam]) {
+    if (presetParam === PERIOD_PRESET_IDS.all) {
+        from = '';
+        to = '';
+        preset = PERIOD_PRESET_IDS.all;
+    } else if (presetParam && presetParam !== PERIOD_PRESET_IDS.custom && PERIOD_PRESETS[presetParam]) {
         // Named presets: always recompute relative to "today" (shareable + fresh).
         const range = PERIOD_PRESETS[presetParam]();
         from = range.from;
@@ -130,18 +139,20 @@ function parseFiltersFromParams(params) {
 }
 
 /**
- * Serializa filtros → URLSearchParams (sempre inclui from, to, preset).
+ * Serializa filtros → URLSearchParams (from/to omitidos com preset=all).
  * @param {DashboardFilters} filters
  */
 function filtersToSearchParams(filters) {
     const params = new URLSearchParams();
 
-    if (filters.from) {
-        params.set('from', filters.from);
-    }
+    if (filters.preset !== PERIOD_PRESET_IDS.all) {
+        if (filters.from) {
+            params.set('from', filters.from);
+        }
 
-    if (filters.to) {
-        params.set('to', filters.to);
+        if (filters.to) {
+            params.set('to', filters.to);
+        }
     }
 
     if (filters.preset) {
@@ -190,9 +201,9 @@ function filtersToSearchParams(filters) {
  *
  * | Param | Valores | Notas |
  * | --- | --- | --- |
- * | `from` / `to` | `YYYY-MM-DD` | Sempre gravados na URL; backend exige o par |
- * | `preset` | `current_month` \| `last_30` \| `last_90` \| `custom` | Named recomputa bounds; `custom` exige from/to |
- * | `group_by` | `day` \| `month` | Só enviado à API analytics (não na URL); ≤45 dias → `day` |
+ * | `from` / `to` | `YYYY-MM-DD` | Gravados na URL (exceto `preset=all`) |
+ * | `preset` | `current_month` \| `last_30` \| `last_90` \| `all` \| `custom` | Named recomputa bounds; `all` sem datas; `custom` exige from/to |
+ * | `group_by` | `day` \| `month` | Só enviado à API analytics (não na URL); ≤45 dias → `day`; all → `month` |
  * | `type` | `credit` \| `debit` | Opcional |
  * | `category_id` | int | Opcional |
  * | `credit_card_id` | int | Opcional (feature credit_cards) |
@@ -245,10 +256,17 @@ export function useDashboardFilters() {
 
     const replaceFilters = useCallback(
         (next) => {
-            const from = next.from ?? filters.from;
-            const to = next.to ?? filters.to;
             const preset = next.preset
-                ?? (next.from || next.to ? detectPeriodPreset(from, to) : filters.preset);
+                ?? (next.from || next.to
+                    ? detectPeriodPreset(next.from ?? filters.from, next.to ?? filters.to)
+                    : filters.preset);
+
+            const from = preset === PERIOD_PRESET_IDS.all
+                ? ''
+                : (next.from ?? filters.from);
+            const to = preset === PERIOD_PRESET_IDS.all
+                ? ''
+                : (next.to ?? filters.to);
 
             const merged = {
                 ...filters,

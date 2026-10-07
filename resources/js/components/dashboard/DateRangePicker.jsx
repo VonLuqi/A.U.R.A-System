@@ -25,6 +25,7 @@ const NAMED_OPTIONS = [
     { id: PERIOD_PRESET_IDS.current_month, label: 'Este mês' },
     { id: PERIOD_PRESET_IDS.last_30, label: '30 dias' },
     { id: PERIOD_PRESET_IDS.last_90, label: '90 dias' },
+    { id: PERIOD_PRESET_IDS.all, label: 'Todo o histórico' },
 ];
 
 const POPOVER_WIDTH_PX = 352;
@@ -145,6 +146,19 @@ export default function DateRangePicker({
     }
 
     function handleNamedPreset(presetId) {
+        if (presetId === PERIOD_PRESET_IDS.all) {
+            if (maxDays != null) {
+                toast.error('Todo o histórico não está disponível para o seu perfil.', {
+                    duration: TOAST_DURATION,
+                });
+                return;
+            }
+
+            setOpen(false);
+            onPresetChange(presetId);
+            return;
+        }
+
         const range = PERIOD_PRESETS[presetId]?.();
 
         if (!range) {
@@ -355,9 +369,12 @@ export default function DateRangePicker({
             role="group"
             aria-label="Período"
         >
-            {NAMED_OPTIONS.map((option) => {
+            {NAMED_OPTIONS.filter(
+                (option) => option.id !== PERIOD_PRESET_IDS.all || maxDays == null,
+            ).map((option) => {
                 const range = PERIOD_PRESETS[option.id]();
                 const exceeds =
+                    option.id !== PERIOD_PRESET_IDS.all &&
                     maxDays != null &&
                     !isWithinDateRangeLimit(range.from, range.to, maxDays);
 

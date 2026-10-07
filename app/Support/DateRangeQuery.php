@@ -18,6 +18,8 @@ final class DateRangeQuery
 
     public const PRESET_LAST_90 = 'last_90';
 
+    public const PRESET_ALL = 'all';
+
     public const PRESET_CUSTOM = 'custom';
 
     /** Inclusive day span at or below this → series group_by=day. */
@@ -28,15 +30,17 @@ final class DateRangeQuery
         self::PRESET_CURRENT_MONTH,
         self::PRESET_LAST_30,
         self::PRESET_LAST_90,
+        self::PRESET_ALL,
         self::PRESET_CUSTOM,
     ];
 
-    /** Named presets that compute from/to (not custom). */
+    /** Named presets that compute from/to (not custom / all). */
     /** @var list<string> */
     public const COMPUTED_PRESETS = [
         self::PRESET_CURRENT_MONTH,
         self::PRESET_LAST_30,
         self::PRESET_LAST_90,
+        self::PRESET_ALL,
     ];
 
     /**
@@ -70,7 +74,7 @@ final class DateRangeQuery
     }
 
     /**
-     * @return array{0: string, 1: string}|null Null for custom (caller supplies from/to).
+     * @return array{0: string, 1: string}|null Null for custom/all (caller supplies or omits from/to).
      */
     public static function boundsForPreset(string $preset, ?DateTimeInterface $at = null): ?array
     {
@@ -78,6 +82,7 @@ final class DateRangeQuery
             self::PRESET_CURRENT_MONTH => self::currentMonthBounds($at),
             self::PRESET_LAST_30 => self::lastNDaysBounds(30, $at),
             self::PRESET_LAST_90 => self::lastNDaysBounds(90, $at),
+            self::PRESET_ALL => null,
             default => null,
         };
     }

@@ -138,6 +138,29 @@ class DashboardAnalyticsRequestTest extends TestCase
             ->assertJsonValidationErrors(['preset']);
     }
 
+    public function test_preset_all_clears_dates_and_uses_group_by_month(): void
+    {
+        $user = User::factory()->admin()->create();
+
+        $this->actingAs($user)
+            ->getJson('/api/analytics/dashboard?preset=all')
+            ->assertOk()
+            ->assertJsonPath('data.filters.from', null)
+            ->assertJsonPath('data.filters.to', null)
+            ->assertJsonPath('data.filters.preset', 'all')
+            ->assertJsonPath('data.filters.group_by', 'month');
+    }
+
+    public function test_visitor_preset_all_returns_422(): void
+    {
+        $visitor = User::factory()->visitor()->create();
+
+        $this->actingAs($visitor)
+            ->getJson('/api/analytics/dashboard?preset=all')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['preset']);
+    }
+
     public function test_current_month_bounds_helper_uses_app_timezone(): void
     {
         config(['app.timezone' => 'America/Sao_Paulo']);

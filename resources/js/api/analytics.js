@@ -30,7 +30,7 @@
  *   filters?: {
  *     from?: string,
  *     to?: string,
- *     preset?: 'current_month'|'last_30'|'last_90'|'custom'|null,
+ *     preset?: 'current_month'|'last_30'|'last_90'|'all'|'custom'|null,
  *     type?: string|null,
  *     category_id?: number|null,
  *     q?: string|null,

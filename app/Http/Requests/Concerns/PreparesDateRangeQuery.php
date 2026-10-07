@@ -30,11 +30,21 @@ trait PreparesDateRangeQuery
 
     /**
      * Apply preset bounds or default to current month when both dates omitted.
-     * Named presets overwrite from/to. custom leaves dates for validation.
+     * Named presets overwrite from/to. all clears dates. custom leaves dates for validation.
      */
     protected function applyDateRangePresetOrDefault(): void
     {
         $preset = DateRangeQuery::normalizePreset($this->input('preset'));
+
+        if ($preset === DateRangeQuery::PRESET_ALL) {
+            $this->merge([
+                'from' => null,
+                'to' => null,
+                'preset' => $preset,
+            ]);
+
+            return;
+        }
 
         if ($preset !== null && $preset !== DateRangeQuery::PRESET_CUSTOM) {
             $bounds = DateRangeQuery::boundsForPreset($preset);
@@ -70,10 +80,18 @@ trait PreparesDateRangeQuery
 
     /**
      * When group_by omitted, derive from span (≤45 days → day). Explicit client value wins.
+     * preset=all → month (unbounded history).
      */
     protected function applyResolvedGroupBy(): void
     {
         if ($this->filled('group_by')) {
+            return;
+        }
+
+        $preset = DateRangeQuery::normalizePreset($this->input('preset'));
+        if ($preset === DateRangeQuery::PRESET_ALL) {
+            $this->merge(['group_by' => 'month']);
+
             return;
         }
 

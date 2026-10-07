@@ -3,10 +3,11 @@
  *
  * Contrato API (query string compartilhado com analytics + transactions):
  * - `from` / `to`: ISO `YYYY-MM-DD` (juntos; omitidos → mês corrente no backend)
- * - `preset`: `current_month` | `last_30` | `last_90` | `custom`
+ * - `preset`: `current_month` | `last_30` | `last_90` | `all` | `custom`
  *   - named: backend recalcula bounds; frontend grava `from`+`to`+`preset` na URL
+ *   - `all`: sem from/to (histórico completo; só papéis com intervalo ilimitado)
  *   - `custom`: exige `from`+`to` (ex.: `?from=2026-08-01&to=2026-08-31&preset=custom`)
- * - `group_by` (só analytics): `day` | `month`; omitido → ≤45 dias inclusivos → `day`
+ * - `group_by` (só analytics): `day` | `month`; omitido → ≤45 dias inclusivos → `day`; all → month
  */
 
 function pad(n) {
@@ -62,15 +63,20 @@ export function daysBetween(from, to) {
  * @returns {'day'|'month'}
  */
 export function resolveGroupBy(from, to) {
+    if (!from || !to) {
+        return 'month';
+    }
+
     return daysBetween(from, to) <= 45 ? 'day' : 'month';
 }
 
-/** @typedef {'current_month'|'last_30'|'last_90'|'custom'} PeriodPresetId */
+/** @typedef {'current_month'|'last_30'|'last_90'|'all'|'custom'} PeriodPresetId */
 
 export const PERIOD_PRESET_IDS = {
     current_month: 'current_month',
     last_30: 'last_30',
     last_90: 'last_90',
+    all: 'all',
     custom: 'custom',
 };
 
@@ -79,12 +85,14 @@ export const PERIOD_PRESETS = {
     current_month: () => currentMonthRange(),
     last_30: () => lastNDaysRange(30),
     last_90: () => lastNDaysRange(90),
+    all: () => ({ from: '', to: '' }),
 };
 
 export const PERIOD_PRESET_LABELS = {
     current_month: 'Este mês',
     last_30: 'Últimos 30 dias',
     last_90: 'Últimos 90 dias',
+    all: 'Todo o histórico',
     custom: 'Personalizado',
 };
 
@@ -210,6 +218,10 @@ export function maskBrDateInput(raw) {
  * @returns {string}
  */
 export function formatRangeLabel(from, to) {
+    if (!from || !to) {
+        return PERIOD_PRESET_LABELS.all;
+    }
+
     const fmt = (iso) => {
         const parts = String(iso).split('-');
         if (parts.length !== 3) {

@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Transactions;
 
 use App\Http\Requests\Concerns\PreparesDateRangeQuery;
+use App\Rules\AllTimeRequiresUnlimitedDateRange;
 use App\Rules\WithinRoleDateRangeLimit;
 use App\Support\DateRangeQuery;
 use Illuminate\Foundation\Http\FormRequest;
@@ -12,7 +13,7 @@ use Illuminate\Validation\Rule;
  * Query params for GET /api/transactions (Etapa C §5.4.1 / PLAN_EXPANSAO §6.1).
  *
  * from/to: required together, or both omitted → current month (compat with analytics).
- * preset: current_month|last_30|last_90|custom (custom exige from/to).
+ * preset: current_month|last_30|last_90|all|custom (custom exige from/to; all omite datas).
  */
 class IndexTransactionsRequest extends FormRequest
 {
@@ -33,25 +34,31 @@ class IndexTransactionsRequest extends FormRequest
     }
 
     /**
-     * @return array<string, list<string|\Illuminate\Validation\Rules\Exists|\Illuminate\Validation\Rules\In|\App\Rules\WithinRoleDateRangeLimit>>
+     * @return array<string, list<string|\Illuminate\Contracts\Validation\ValidationRule|\Illuminate\Validation\Rules\Exists|\Illuminate\Validation\Rules\In>>
      */
     public function rules(): array
     {
         $preset = DateRangeQuery::normalizePreset($this->input('preset'));
         $customRequiresDates = $preset === DateRangeQuery::PRESET_CUSTOM;
+        $isAll = $preset === DateRangeQuery::PRESET_ALL;
 
         return [
-            'preset' => ['nullable', 'string', Rule::in(DateRangeQuery::PRESETS)],
+            'preset' => [
+                'nullable',
+                'string',
+                Rule::in(DateRangeQuery::PRESETS),
+                new AllTimeRequiresUnlimitedDateRange($this->user()),
+            ],
             'from' => [
                 $customRequiresDates ? 'required' : 'nullable',
-                'required_with:to',
+                $isAll ? 'nullable' : 'required_with:to',
                 'date',
                 'date_format:Y-m-d',
                 'before_or_equal:to',
             ],
             'to' => [
                 $customRequiresDates ? 'required' : 'nullable',
-                'required_with:from',
+                $isAll ? 'nullable' : 'required_with:from',
                 'date',
                 'date_format:Y-m-d',
                 'after_or_equal:from',
@@ -91,7 +98,7 @@ class IndexTransactionsRequest extends FormRequest
             'direction.in' => 'Direção inválida. Use asc ou desc.',
             'from.required_with' => 'Informe from e to juntos, ou omita ambos para o mês corrente.',
             'to.required_with' => 'Informe from e to juntos, ou omita ambos para o mês corrente.',
-            'preset.in' => 'preset inválido. Use current_month, last_30, last_90 ou custom.',
+            'preset.in' => 'preset inválido. Use current_month, last_30, last_90, all ou custom.',
             'to' => 'O intervalo de datas excede o limite do seu perfil.',
         ];
     }
@@ -105,14 +112,18 @@ class IndexTransactionsRequest extends FormRequest
         $this->applyDateRangePresetOrDefault();
     }
 
-    public function fromDate(): string
+    public function fromDate(): ?string
     {
-        return (string) $this->validated('from');
+        $value = $this->validated('from');
+
+        return is_string($value) && $value !== '' ? $value : null;
     }
 
-    public function toDate(): string
+    public function toDate(): ?string
     {
-        return (string) $this->validated('to');
+        $value = $this->validated('to');
+
+        return is_string($value) && $value !== '' ? $value : null;
     }
 
     public function type(): ?string
@@ -212,8 +223,8 @@ class IndexTransactionsRequest extends FormRequest
      * Normalized filters for TransactionQueryService (§5.4.2).
      *
      * @return array{
-     *     from: string,
-     *     to: string,
+     *     from: ?string,
+     *     to: ?string,
      *     type: ?string,
      *     category_id: ?int,
      *     q: ?string,
