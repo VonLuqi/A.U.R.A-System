@@ -1,12 +1,17 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getUnreadNotificationCount } from '../api/notifications';
-import { getErrorMessage } from '../lib/errors';
+import {
+    getErrorMessage,
+    getHttpStatus,
+    getRetryAfterSeconds,
+    RATE_LIMIT_RETRY_CAP_SECONDS,
+} from '../lib/errors';
 
 const POLL_MS = 60_000;
 
 /**
  * useUnreadNotificationCount — poll 60s + refetch on focus
- * (PLAN_CARTOES_EMPRESTIMOS §6.2).
+ * (PLAN_CARTOES_EMPRESTIMOS §6.2). Backoff on 429 until Retry-After.
  *
  * @param {{ enabled?: boolean }} [options]
  */
@@ -14,9 +19,15 @@ export function useUnreadNotificationCount({ enabled = true } = {}) {
     const [count, setCount] = useState(0);
     const [status, setStatus] = useState('idle');
     const [error, setError] = useState(null);
+    /** @type {import('react').MutableRefObject<number>} */
+    const quietUntilRef = useRef(0);
 
     const refetch = useCallback(async () => {
         if (!enabled) {
+            return 0;
+        }
+
+        if (Date.now() < quietUntilRef.current) {
             return 0;
         }
 
@@ -29,17 +40,27 @@ export function useUnreadNotificationCount({ enabled = true } = {}) {
             setStatus('success');
             return next;
         } catch (err) {
+            if (getHttpStatus(err) === 429) {
+                const retry = getRetryAfterSeconds(err);
+                const wait = Math.min(
+                    retry != null && retry > 0 ? retry : 60,
+                    RATE_LIMIT_RETRY_CAP_SECONDS,
+                );
+                quietUntilRef.current = Date.now() + wait * 1000;
+            }
+
             setError(getErrorMessage(err));
             setStatus('error');
-            return count;
+            return 0;
         }
-    }, [enabled, count]);
+    }, [enabled]);
 
     useEffect(() => {
         if (!enabled) {
             setCount(0);
             setStatus('idle');
             setError(null);
+            quietUntilRef.current = 0;
             return undefined;
         }
 
@@ -47,6 +68,10 @@ export function useUnreadNotificationCount({ enabled = true } = {}) {
         const controller = new AbortController();
 
         const load = async () => {
+            if (Date.now() < quietUntilRef.current) {
+                return;
+            }
+
             try {
                 const next = await getUnreadNotificationCount({
                     signal: controller.signal,
@@ -63,6 +88,15 @@ export function useUnreadNotificationCount({ enabled = true } = {}) {
                 }
 
                 if (!ignore) {
+                    if (getHttpStatus(err) === 429) {
+                        const retry = getRetryAfterSeconds(err);
+                        const wait = Math.min(
+                            retry != null && retry > 0 ? retry : 60,
+                            RATE_LIMIT_RETRY_CAP_SECONDS,
+                        );
+                        quietUntilRef.current = Date.now() + wait * 1000;
+                    }
+
                     setError(getErrorMessage(err));
                     setStatus('error');
                 }

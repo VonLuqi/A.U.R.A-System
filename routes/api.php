@@ -49,8 +49,8 @@ Route::middleware(['auth', 'active'])->group(function () {
         ->middleware(['quota:uploads', 'throttle:statements-upload'])
         ->name('api.statements.upload');
 
-    // §8 — read endpoints share a mild per-user throttle.
-    Route::middleware('throttle:60,1')->group(function () {
+    // §8 — SPA reads/writes share api-spa (180/min, PT message).
+    Route::middleware('throttle:api-spa')->group(function () {
         Route::get('/user', [AuthenticatedSessionController::class, 'show'])
             ->name('api.user');
 
@@ -82,7 +82,7 @@ Route::middleware(['auth', 'active'])->group(function () {
     });
 
     // Transactions — list/detail + manual CRUD (PLAN_EXPANSAO §3.1 / §3.3)
-    Route::middleware('throttle:60,1')->group(function () {
+    Route::middleware('throttle:api-spa')->group(function () {
         Route::get('/transactions', [TransactionController::class, 'index'])
             ->name('api.transactions.index');
 
@@ -100,7 +100,7 @@ Route::middleware(['auth', 'active'])->group(function () {
     });
 
     Route::post('/transactions', [TransactionController::class, 'store'])
-        ->middleware(['quota:manual_transactions', 'throttle:60,1'])
+        ->middleware(['quota:manual_transactions', 'throttle:api-spa'])
         ->name('api.transactions.store');
 
     Route::post('/transactions/wipe', [TransactionController::class, 'wipe'])
@@ -108,7 +108,7 @@ Route::middleware(['auth', 'active'])->group(function () {
         ->name('api.transactions.wipe');
 
     // Aliases / categorization rules (PLAN_EXPANSAO §4.2)
-    Route::middleware('throttle:60,1')->group(function () {
+    Route::middleware('throttle:api-spa')->group(function () {
         Route::get('/aliases', [TransactionAliasController::class, 'index'])
             ->name('api.aliases.index');
         Route::post('/aliases/preview', [TransactionAliasController::class, 'preview'])
@@ -126,7 +126,7 @@ Route::middleware(['auth', 'active'])->group(function () {
     });
 
     // Goals (PLAN_EXPANSAO §7.2)
-    Route::middleware('throttle:60,1')->group(function () {
+    Route::middleware('throttle:api-spa')->group(function () {
         Route::get('/goals', [GoalController::class, 'index'])
             ->name('api.goals.index');
         Route::post('/goals', [GoalController::class, 'store'])
@@ -142,7 +142,7 @@ Route::middleware(['auth', 'active'])->group(function () {
     });
 
     // Credit cards (PLAN_CARTOES_EMPRESTIMOS §3.1 / §3.4)
-    Route::middleware(['feature:credit_cards', 'throttle:60,1'])->group(function () {
+    Route::middleware(['feature:credit_cards', 'throttle:api-spa'])->group(function () {
         Route::get('/credit-cards', [CreditCardController::class, 'index'])
             ->name('api.credit-cards.index');
         Route::post('/credit-cards', [CreditCardController::class, 'store'])
@@ -158,7 +158,7 @@ Route::middleware(['auth', 'active'])->group(function () {
     });
 
     // Loans / cobranças (PLAN_CARTOES_EMPRESTIMOS §3.2 / §3.4)
-    Route::middleware(['feature:loans', 'throttle:60,1'])->group(function () {
+    Route::middleware(['feature:loans', 'throttle:api-spa'])->group(function () {
         Route::get('/debtors', [DebtorController::class, 'index'])
             ->name('api.debtors.index');
         Route::post('/debtors', [DebtorController::class, 'store'])
@@ -206,7 +206,7 @@ Route::middleware(['auth', 'active'])->group(function () {
     });
 
     // In-app notifications (PLAN_CARTOES_EMPRESTIMOS §5)
-    Route::middleware(['feature:notifications', 'throttle:60,1'])->group(function () {
+    Route::middleware(['feature:notifications', 'throttle:api-spa'])->group(function () {
         Route::get('/notifications', [NotificationController::class, 'index'])
             ->name('api.notifications.index');
         Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount'])

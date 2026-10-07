@@ -207,7 +207,7 @@ class AppServiceProvider extends ServiceProvider
 
     /**
      * Named limiters for Etapa C (§1.7.1).
-     * Applied to routes in §1.7.2 (`throttle:login`, `throttle:statements-upload`).
+     * Applied to routes in §1.7.2 (`throttle:login`, `throttle:statements-upload`, `throttle:api-spa`).
      */
     private function configureRateLimiting(): void
     {
@@ -243,6 +243,19 @@ class AppServiceProvider extends ServiceProvider
                 ->response(function (Request $request, array $headers) {
                     return response()->json([
                         'message' => 'Limite de uploads excedido. Tente novamente em breve.',
+                    ], 429, $headers);
+                });
+        });
+
+        RateLimiter::for('api-spa', function (Request $request) {
+            $userId = $request->user()?->id ?: $request->ip();
+            $perUser = (int) env('RATE_LIMIT_API_SPA_PER_USER', 180);
+
+            return Limit::perMinute(max(1, $perUser))
+                ->by('api-spa|'.$userId)
+                ->response(function (Request $request, array $headers) {
+                    return response()->json([
+                        'message' => 'Muitas tentativas. Aguarde e tente novamente.',
                     ], 429, $headers);
                 });
         });

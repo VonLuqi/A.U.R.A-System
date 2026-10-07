@@ -21,6 +21,48 @@ export const VALIDATION_ERROR_MESSAGE = 'Dados inválidos.';
 export const NOT_FOUND_MESSAGE = 'Recurso não encontrado.';
 export const RATE_LIMIT_MESSAGE = 'Muitas tentativas. Aguarde e tente novamente.';
 
+/** Cap used for toast copy / poll backoff (seconds). */
+export const RATE_LIMIT_RETRY_CAP_SECONDS = 300;
+
+/**
+ * @param {string|null|undefined} message
+ * @returns {boolean}
+ */
+function isEnglishTooManyAttempts(message) {
+    if (!message) {
+        return false;
+    }
+
+    return /^too many attempts\.?$/i.test(message.trim());
+}
+
+/**
+ * Parse Retry-After header (seconds). Returns null if missing/invalid.
+ * @param {unknown} error
+ * @returns {number|null}
+ */
+export function getRetryAfterSeconds(error) {
+    if (!error || typeof error !== 'object') {
+        return null;
+    }
+
+    const headers = /** @type {{ response?: { headers?: Record<string, string> } }} */ (error)
+        .response?.headers;
+
+    if (!headers || typeof headers !== 'object') {
+        return null;
+    }
+
+    const raw = headers['retry-after'] ?? headers['Retry-After'];
+    const seconds = raw !== undefined && raw !== null ? Number(raw) : NaN;
+
+    if (!Number.isFinite(seconds) || seconds <= 0) {
+        return null;
+    }
+
+    return Math.ceil(seconds);
+}
+
 /**
  * @param {unknown} error
  * @returns {boolean}
@@ -121,7 +163,11 @@ export function getErrorMessage(error) {
     }
 
     if (status === 429) {
-        return apiMessage || RATE_LIMIT_MESSAGE;
+        if (!apiMessage || isEnglishTooManyAttempts(apiMessage)) {
+            return RATE_LIMIT_MESSAGE;
+        }
+
+        return apiMessage;
     }
 
     if (status === 413) {

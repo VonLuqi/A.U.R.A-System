@@ -3,10 +3,14 @@ import { toast } from 'sonner';
 import '../bootstrap';
 import {
     getErrorMessage,
+    getRetryAfterSeconds,
     isCanceledError,
     NETWORK_ERROR_MESSAGE,
+    RATE_LIMIT_MESSAGE,
+    RATE_LIMIT_RETRY_CAP_SECONDS,
     SESSION_EXPIRED_MESSAGE,
 } from '../lib/errors';
+import { TOAST_DURATION } from '../lib/toast';
 
 /**
  * Dedicated Axios instance for Aura SPA (Etapa D §5.1 / §5.2 / §1.1.1).
@@ -28,6 +32,10 @@ const api = axios.create({
 });
 
 const CSRF_RETRY_FLAG = '__auraCsrfRetry';
+const RATE_LIMIT_TOAST_ID = 'aura-rate-limit';
+
+/** @type {number} epoch ms — suppress stacked 429 toasts until then */
+let rateLimitQuietUntil = 0;
 
 /** @type {(() => void) | null} */
 let onUnauthorized = null;
@@ -63,15 +71,18 @@ function shouldSkipUnauthorizedRedirect(config) {
  * @returns {string}
  */
 function retryAfterMessage(error) {
-    const base = getErrorMessage(error);
-    const raw = error.response?.headers?.['retry-after'];
-    const seconds = raw !== undefined && raw !== null ? Number(raw) : NaN;
+    const base = getErrorMessage(error) || RATE_LIMIT_MESSAGE;
+    const seconds = getRetryAfterSeconds(error);
 
-    if (!Number.isFinite(seconds) || seconds <= 0) {
+    if (seconds == null) {
         return base;
     }
 
-    return `${base} Aguarde ${Math.ceil(seconds)} s.`;
+    if (seconds > RATE_LIMIT_RETRY_CAP_SECONDS) {
+        return `${base} Aguarde alguns minutos.`;
+    }
+
+    return `${base} Aguarde ${seconds} s.`;
 }
 
 /**
@@ -94,6 +105,29 @@ function stripFormDataContentType(config) {
     }
 
     return config;
+}
+
+/**
+ * @param {import('axios').AxiosError} error
+ */
+function toastRateLimitOnce(error) {
+    const now = Date.now();
+    const retrySeconds = getRetryAfterSeconds(error);
+    const waitSeconds = Math.min(
+        retrySeconds != null && retrySeconds > 0 ? retrySeconds : 60,
+        RATE_LIMIT_RETRY_CAP_SECONDS,
+    );
+
+    if (now < rateLimitQuietUntil) {
+        return;
+    }
+
+    rateLimitQuietUntil = now + waitSeconds * 1000;
+
+    toast.error(retryAfterMessage(error), {
+        id: RATE_LIMIT_TOAST_ID,
+        duration: Math.min(Math.max(waitSeconds * 1000, TOAST_DURATION), 12_000),
+    });
 }
 
 api.interceptors.request.use((config) => stripFormDataContentType(config));
@@ -146,7 +180,7 @@ api.interceptors.response.use(
         }
 
         if (status === 429) {
-            toast.error(retryAfterMessage(error));
+            toastRateLimitOnce(error);
 
             return Promise.reject(error);
         }
