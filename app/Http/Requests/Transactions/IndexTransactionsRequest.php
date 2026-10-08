@@ -307,6 +307,7 @@ class IndexTransactionsRequest extends FormRequest
             'sort' => $this->sort(),
             'direction' => $this->direction(),
             'preset' => $this->preset(),
+            'cycle_type_ranges' => $this->resolveMyCycleTypeRanges(),
         ];
     }
 }

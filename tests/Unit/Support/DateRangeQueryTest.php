@@ -103,4 +103,33 @@ class DateRangeQueryTest extends TestCase
         $this->assertSame(6, DateRangeQuery::cycleDayForType('debit', 6, 12));
         $this->assertSame(12, DateRangeQuery::cycleDayForType('credit', 6, 12));
     }
+
+    public function test_my_cycle_bounds_unions_expense_and_income_for_all(): void
+    {
+        config(['app.timezone' => 'America/Sao_Paulo']);
+        $at = CarbonImmutable::parse('2026-10-07 12:00:00', 'America/Sao_Paulo');
+
+        $this->assertSame(
+            ['2026-10-06', '2026-11-06'],
+            DateRangeQuery::myCycleBounds('debit', 6, 12, 0, $at)
+        );
+        $this->assertSame(
+            ['2026-09-12', '2026-10-12'],
+            DateRangeQuery::myCycleBounds('credit', 6, 12, 0, $at)
+        );
+        $this->assertSame(
+            ['2026-10-06', '2026-11-12'],
+            DateRangeQuery::myCycleBounds(null, 6, 12, 0, $at)
+        );
+        $this->assertSame(
+            ['2026-09-06', '2026-10-12'],
+            DateRangeQuery::myCycleBounds(null, 6, 12, -1, $at)
+        );
+
+        $ranges = DateRangeQuery::myCycleTypeRanges(null, 6, 12, -1, $at);
+        $this->assertSame(['2026-09-06', '2026-10-06'], $ranges['debit']);
+        $this->assertSame(['2026-09-12', '2026-10-12'], $ranges['credit']);
+        $this->assertNull(DateRangeQuery::myCycleTypeRanges('debit', 6, 12, -1, $at));
+        $this->assertNull(DateRangeQuery::myCycleTypeRanges(null, 6, 6, -1, $at));
+    }
 }

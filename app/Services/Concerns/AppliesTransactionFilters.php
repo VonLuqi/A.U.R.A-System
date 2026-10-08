@@ -24,7 +24,11 @@ use Illuminate\Database\Eloquent\Builder;
  *     has_credit_card?: bool|null,
  *     sort?: string,
  *     direction?: string,
- *     group_by?: string
+ *     group_by?: string,
+ *     cycle_type_ranges?: array{
+ *         debit: array{0: string, 1: string},
+ *         credit: array{0: string, 1: string}
+ *     }|null
  * }
  */
 trait AppliesTransactionFilters
@@ -36,21 +40,41 @@ trait AppliesTransactionFilters
      */
     public function applyFilters(Builder $query, array $filters): Builder
     {
-        $from = $filters['from'] ?? null;
-        $to = $filters['to'] ?? null;
-
-        if (is_string($from) && $from !== '' && is_string($to) && $to !== '') {
-            $query->betweenDates($from, $to);
-        } elseif (is_string($from) && $from !== '') {
-            $query->whereDate('occurred_on', '>=', $from);
-        } elseif (is_string($to) && $to !== '') {
-            $query->whereDate('occurred_on', '<=', $to);
-        }
-
         $type = $filters['type'] ?? null;
-        if ($type === 'credit' || $type === 'debit') {
-            // Qualify: categories.type collides on analytics joins (§5.5.2).
-            $query->where('transactions.type', $type);
+        $cycleRanges = $filters['cycle_type_ranges'] ?? null;
+        $useCycleSplit = is_array($cycleRanges)
+            && ($type === null || $type === '')
+            && isset($cycleRanges['debit'][0], $cycleRanges['debit'][1], $cycleRanges['credit'][0], $cycleRanges['credit'][1]);
+
+        if ($useCycleSplit) {
+            // Meu ciclo + Todos: saídas no ciclo de gastos, entradas no ciclo de receita.
+            $query->where(function (Builder $outer) use ($cycleRanges): void {
+                $outer->where(function (Builder $debit) use ($cycleRanges): void {
+                    $debit->where('transactions.type', 'debit')
+                        ->whereDate('transactions.occurred_on', '>=', $cycleRanges['debit'][0])
+                        ->whereDate('transactions.occurred_on', '<=', $cycleRanges['debit'][1]);
+                })->orWhere(function (Builder $credit) use ($cycleRanges): void {
+                    $credit->where('transactions.type', 'credit')
+                        ->whereDate('transactions.occurred_on', '>=', $cycleRanges['credit'][0])
+                        ->whereDate('transactions.occurred_on', '<=', $cycleRanges['credit'][1]);
+                });
+            });
+        } else {
+            $from = $filters['from'] ?? null;
+            $to = $filters['to'] ?? null;
+
+            if (is_string($from) && $from !== '' && is_string($to) && $to !== '') {
+                $query->betweenDates($from, $to);
+            } elseif (is_string($from) && $from !== '') {
+                $query->whereDate('occurred_on', '>=', $from);
+            } elseif (is_string($to) && $to !== '') {
+                $query->whereDate('occurred_on', '<=', $to);
+            }
+
+            if ($type === 'credit' || $type === 'debit') {
+                // Qualify: categories.type collides on analytics joins (§5.5.2).
+                $query->where('transactions.type', $type);
+            }
         }
 
         $categoryId = $filters['category_id'] ?? null;

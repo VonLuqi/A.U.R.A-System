@@ -8,6 +8,7 @@
  *   - `all`: sem from/to (histórico completo; só papéis com intervalo ilimitado)
  *   - `custom`: exige `from`+`to` (ex.: `?from=2026-08-01&to=2026-08-31&preset=custom`)
  *   - `my_cycle`: `cycle_offset` + dias de perfil + `type`
+ *     (Todos = união saídas+entradas; Entradas/Saídas = só o dia respectivo)
  * - `group_by` (só analytics): `day` | `month`; omitido → ≤45 dias inclusivos → `day`; all → month
  */
 
@@ -169,6 +170,33 @@ export function cycleDayForType(type, expenseOrClosingDay, incomeOrDueDay) {
 }
 
 /**
+ * Income cycle aligned to the expense cycle start month (mirrors PHP).
+ *
+ * @param {string} expenseFrom YYYY-MM-DD
+ * @param {number} incomeDay
+ * @returns {{ from: string, to: string }}
+ */
+export function incomeBoundsAlignedToExpenseStart(expenseFrom, incomeDay) {
+    const start = parseIsoDate(expenseFrom);
+    const safeIncome = Math.max(1, Math.min(31, Number(incomeDay) || DEFAULT_INCOME_CYCLE_DAY));
+
+    if (!start) {
+        return cycleDayRange(safeIncome, 0);
+    }
+
+    let incomeFrom = dateOnMonth(start.getFullYear(), start.getMonth(), safeIncome);
+    if (incomeFrom.getTime() < start.getTime()) {
+        const next = new Date(start.getFullYear(), start.getMonth() + 1, 1);
+        incomeFrom = dateOnMonth(next.getFullYear(), next.getMonth(), safeIncome);
+    }
+
+    const endBase = new Date(incomeFrom.getFullYear(), incomeFrom.getMonth() + 1, 1);
+    const incomeTo = dateOnMonth(endBase.getFullYear(), endBase.getMonth(), safeIncome);
+
+    return { from: toIsoDate(incomeFrom), to: toIsoDate(incomeTo) };
+}
+
+/**
  * @param {{
  *   preset: PeriodPresetId|string,
  *   type?: ''|'credit'|'debit'|null,
@@ -189,13 +217,25 @@ export function resolveCycleRange({
         return null;
     }
 
-    const day = cycleDayForType(
-        type,
-        user?.expense_cycle_day ?? DEFAULT_EXPENSE_CYCLE_DAY,
-        user?.income_cycle_day ?? DEFAULT_INCOME_CYCLE_DAY,
-    );
+    const expenseDay = user?.expense_cycle_day ?? DEFAULT_EXPENSE_CYCLE_DAY;
+    const incomeDay = user?.income_cycle_day ?? DEFAULT_INCOME_CYCLE_DAY;
 
-    return cycleDayRange(day, cycleOffset, now);
+    if (type === 'credit') {
+        return cycleDayRange(incomeDay, cycleOffset, now);
+    }
+
+    if (type === 'debit') {
+        return cycleDayRange(expenseDay, cycleOffset, now);
+    }
+
+    // Todos: union of expense cycle + income cycle aligned to expense start.
+    const expense = cycleDayRange(expenseDay, cycleOffset, now);
+    const income = incomeBoundsAlignedToExpenseStart(expense.from, incomeDay);
+
+    return {
+        from: expense.from <= income.from ? expense.from : income.from,
+        to: expense.to >= income.to ? expense.to : income.to,
+    };
 }
 
 /**

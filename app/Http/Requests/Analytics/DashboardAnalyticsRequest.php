@@ -258,6 +258,7 @@ class DashboardAnalyticsRequest extends FormRequest
             'q' => $this->search(),
             'group_by' => $this->groupBy(),
             'preset' => $this->preset(),
+            'cycle_type_ranges' => $this->resolveMyCycleTypeRanges(),
         ];
     }
 }

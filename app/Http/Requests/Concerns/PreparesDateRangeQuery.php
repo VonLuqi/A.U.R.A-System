@@ -78,8 +78,10 @@ trait PreparesDateRangeQuery
 
         if ($preset === DateRangeQuery::PRESET_MY_CYCLE) {
             $offset = $this->normalizedCycleOffset();
-            $day = $this->resolveMyCycleDay();
-            $bounds = DateRangeQuery::cycleDayBounds($day, $offset);
+            $type = $this->input('type');
+            $type = is_string($type) && $type !== '' ? $type : null;
+            [$expenseDay, $incomeDay] = $this->resolveMyCycleDays();
+            $bounds = DateRangeQuery::myCycleBounds($type, $expenseDay, $incomeDay, $offset);
             $this->merge([
                 'from' => $bounds[0],
                 'to' => $bounds[1],
@@ -132,24 +134,47 @@ trait PreparesDateRangeQuery
         return max(-120, min(120, (int) $this->input('cycle_offset')));
     }
 
-    protected function resolveMyCycleDay(): int
+    /**
+     * @return array{0: int, 1: int} [expenseDay, incomeDay]
+     */
+    protected function resolveMyCycleDays(): array
     {
-        $type = $this->input('type');
-        $type = is_string($type) && $type !== '' ? $type : null;
         $user = $this->user();
 
         if ($user === null) {
-            return DateRangeQuery::cycleDayForType(
-                $type,
+            return [
                 DateRangeQuery::DEFAULT_EXPENSE_CYCLE_DAY,
                 DateRangeQuery::DEFAULT_INCOME_CYCLE_DAY,
-            );
+            ];
         }
 
-        return DateRangeQuery::cycleDayForType(
-            $type,
+        return [
             $user->expenseCycleDay(),
             $user->incomeCycleDay(),
+        ];
+    }
+
+    /**
+     * Per-type date windows when Meu ciclo + Todos and days differ.
+     *
+     * @return array{debit: array{0: string, 1: string}, credit: array{0: string, 1: string}}|null
+     */
+    protected function resolveMyCycleTypeRanges(): ?array
+    {
+        $preset = DateRangeQuery::normalizePreset($this->input('preset'));
+        if ($preset !== DateRangeQuery::PRESET_MY_CYCLE) {
+            return null;
+        }
+
+        $type = $this->input('type');
+        $type = is_string($type) && $type !== '' ? $type : null;
+        [$expenseDay, $incomeDay] = $this->resolveMyCycleDays();
+
+        return DateRangeQuery::myCycleTypeRanges(
+            $type,
+            $expenseDay,
+            $incomeDay,
+            $this->normalizedCycleOffset(),
         );
     }
 

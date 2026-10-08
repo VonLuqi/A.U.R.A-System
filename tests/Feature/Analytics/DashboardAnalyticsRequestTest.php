@@ -202,7 +202,13 @@ class DashboardAnalyticsRequestTest extends TestCase
                 ->getJson('/api/analytics/dashboard?preset=my_cycle&cycle_offset=-1')
                 ->assertOk()
                 ->assertJsonPath('data.filters.from', '2026-09-06')
-                ->assertJsonPath('data.filters.to', '2026-10-06');
+                ->assertJsonPath('data.filters.to', '2026-10-12');
+
+            $this->actingAs($user)
+                ->getJson('/api/analytics/dashboard?preset=my_cycle')
+                ->assertOk()
+                ->assertJsonPath('data.filters.from', '2026-10-06')
+                ->assertJsonPath('data.filters.to', '2026-11-12');
         } finally {
             CarbonImmutable::setTestNow();
         }

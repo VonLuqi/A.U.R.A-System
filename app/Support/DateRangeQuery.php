@@ -119,7 +119,7 @@ final class DateRangeQuery
 
     /**
      * Day for my_cycle given transaction type filter.
-     * credit → income day; debit or empty → expense day.
+     * credit → income day; debit → expense day; empty/all → expense day (navigation anchor).
      */
     public static function cycleDayForType(?string $type, int $expenseOrClosingDay, int $incomeOrDueDay): int
     {
@@ -128,6 +128,106 @@ final class DateRangeQuery
         }
 
         return max(1, min(31, $expenseOrClosingDay));
+    }
+
+    /**
+     * Bounds for my_cycle.
+     * debit → expense day only; credit → income day only;
+     * empty/all → union of expense cycle + income cycle aligned to the expense start month
+     * (so saídas day 6 + entradas day 12 cover both windows in the same navigated period).
+     *
+     * @return array{0: string, 1: string} [from, to] Y-m-d
+     */
+    public static function myCycleBounds(
+        ?string $type,
+        int $expenseDay,
+        int $incomeDay,
+        int $offset = 0,
+        ?DateTimeInterface $at = null,
+    ): array {
+        $expenseDay = max(1, min(31, $expenseDay));
+        $incomeDay = max(1, min(31, $incomeDay));
+
+        if ($type === 'credit') {
+            return self::cycleDayBounds($incomeDay, $offset, $at);
+        }
+
+        if ($type === 'debit') {
+            return self::cycleDayBounds($expenseDay, $offset, $at);
+        }
+
+        [$expenseFrom, $expenseTo] = self::cycleDayBounds($expenseDay, $offset, $at);
+        [$incomeFrom, $incomeTo] = self::incomeBoundsAlignedToExpenseStart(
+            $expenseFrom,
+            $incomeDay,
+        );
+
+        $from = $expenseFrom <= $incomeFrom ? $expenseFrom : $incomeFrom;
+        $to = $expenseTo >= $incomeTo ? $expenseTo : $incomeTo;
+
+        return [$from, $to];
+    }
+
+    /**
+     * When type is empty and days differ, per-type windows for filtering
+     * (debit in expense cycle, credit in aligned income cycle). Null when not needed.
+     *
+     * @return array{debit: array{0: string, 1: string}, credit: array{0: string, 1: string}}|null
+     */
+    public static function myCycleTypeRanges(
+        ?string $type,
+        int $expenseDay,
+        int $incomeDay,
+        int $offset = 0,
+        ?DateTimeInterface $at = null,
+    ): ?array {
+        if ($type === 'credit' || $type === 'debit') {
+            return null;
+        }
+
+        $expenseDay = max(1, min(31, $expenseDay));
+        $incomeDay = max(1, min(31, $incomeDay));
+
+        if ($expenseDay === $incomeDay) {
+            return null;
+        }
+
+        [$expenseFrom, $expenseTo] = self::cycleDayBounds($expenseDay, $offset, $at);
+        [$incomeFrom, $incomeTo] = self::incomeBoundsAlignedToExpenseStart(
+            $expenseFrom,
+            $incomeDay,
+        );
+
+        return [
+            'debit' => [$expenseFrom, $expenseTo],
+            'credit' => [$incomeFrom, $incomeTo],
+        ];
+    }
+
+    /**
+     * Income cycle sharing the expense cycle's start month (or next month if income day is earlier).
+     *
+     * @return array{0: string, 1: string}
+     */
+    public static function incomeBoundsAlignedToExpenseStart(string $expenseFrom, int $incomeDay): array
+    {
+        $tz = (string) config('app.timezone');
+        $expenseStart = CarbonImmutable::parse($expenseFrom, $tz)->startOfDay();
+        $incomeDay = max(1, min(31, $incomeDay));
+
+        $incomeFrom = self::dateOnMonth($expenseStart->year, $expenseStart->month, $incomeDay);
+        if ($incomeFrom->lt($expenseStart)) {
+            $next = $expenseStart->addMonthNoOverflow()->startOfMonth();
+            $incomeFrom = self::dateOnMonth($next->year, $next->month, $incomeDay);
+        }
+
+        $endMonth = $incomeFrom->addMonthNoOverflow()->startOfMonth();
+        $incomeTo = self::dateOnMonth($endMonth->year, $endMonth->month, $incomeDay);
+
+        return [
+            $incomeFrom->format('Y-m-d'),
+            $incomeTo->format('Y-m-d'),
+        ];
     }
 
     /**

@@ -10,6 +10,7 @@ import {
     maxDateRangeDaysFor,
     normalizePeriodPreset,
     parseIsoDate,
+    resolveCycleRange,
     resolveGroupBy,
 } from './dates.js';
 
@@ -30,6 +31,27 @@ describe('dates §6.2', () => {
         expect(cycleDayRange(6, -1, now)).toEqual({ from: '2026-09-06', to: '2026-10-06' });
         expect(cycleDayForType('credit', 6, 12)).toBe(12);
         expect(cycleDayForType('debit', 6, 12)).toBe(6);
+        expect(resolveCycleRange({
+            preset: 'my_cycle',
+            type: '',
+            cycleOffset: -1,
+            user: { expense_cycle_day: 6, income_cycle_day: 12 },
+            now,
+        })).toEqual({ from: '2026-09-06', to: '2026-10-12' });
+        expect(resolveCycleRange({
+            preset: 'my_cycle',
+            type: 'debit',
+            cycleOffset: -1,
+            user: { expense_cycle_day: 6, income_cycle_day: 12 },
+            now,
+        })).toEqual({ from: '2026-09-06', to: '2026-10-06' });
+        expect(resolveCycleRange({
+            preset: 'my_cycle',
+            type: 'credit',
+            cycleOffset: 0,
+            user: { expense_cycle_day: 6, income_cycle_day: 12 },
+            now,
+        })).toEqual({ from: '2026-09-12', to: '2026-10-12' });
     });
 
     it('resolveGroupBy uses inclusive 45-day threshold', () => {
