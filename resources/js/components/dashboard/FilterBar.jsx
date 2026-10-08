@@ -9,6 +9,7 @@ import { cx } from '../../lib/cx';
 import Button from '../ui/Button';
 import Modal from '../ui/Modal';
 import CategorySelect from './CategorySelect';
+import CreditCardMultiFilter from './CreditCardMultiFilter';
 import DateRangePicker from './DateRangePicker';
 import FilterSelect from './FilterSelect';
 import SearchField from './SearchField';
@@ -28,9 +29,12 @@ export default function FilterBar({
     from,
     to,
     cycleOffset = 0,
+    expenseCycleDay = 6,
+    incomeCycleDay = 12,
     maxDateRangeDays = null,
     onPeriodChange,
     onCycleOffsetChange,
+    onCycleDaysChange,
     onCustomRange,
     type,
     onTypeChange,
@@ -38,8 +42,10 @@ export default function FilterBar({
     onCategoryChange,
     categories = [],
     categoriesLoading = false,
-    creditCardId = '',
-    onCreditCardChange,
+    creditCardIds = [],
+    includeUncarded = false,
+    onCreditCardIdsChange,
+    onIncludeUncardedChange,
     creditCards = [],
     creditCardsLoading = false,
     showCreditCardFilter = false,
@@ -56,18 +62,15 @@ export default function FilterBar({
     const [filtersOpen, setFiltersOpen] = useState(false);
 
     const selectedCategory = categories.find((c) => c.id === categoryId);
-    const selectedCard = creditCards.find((c) => c.id === creditCardId);
     const selectedDebtor = debtors.find((d) => d.id === debtorId);
+    const selectedCardCount = Array.isArray(creditCardIds) ? creditCardIds.length : 0;
     const periodLabel =
         periodPreset === PERIOD_PRESET_IDS.custom
         || periodPreset === PERIOD_PRESET_IDS.my_cycle
-        || periodPreset === PERIOD_PRESET_IDS.card_cycle
             ? formatRangeLabel(from, to)
                 || PERIOD_PRESET_LABELS[periodPreset]
                 || PERIOD_PRESET_LABELS.custom
             : PERIOD_PRESET_LABELS[periodPreset] ?? 'Período';
-
-    const hasCreditCard = creditCardId !== '' && creditCardId != null;
 
     const activeFilterCount = useMemo(() => {
         let count = 0;
@@ -80,7 +83,7 @@ export default function FilterBar({
         if (categoryId !== '' && categoryId != null) {
             count += 1;
         }
-        if (showCreditCardFilter && creditCardId !== '' && creditCardId != null) {
+        if (showCreditCardFilter && selectedCardCount > 0) {
             count += 1;
         }
         if (showDebtorFilter && debtorId !== '' && debtorId != null) {
@@ -92,7 +95,7 @@ export default function FilterBar({
         type,
         categoryId,
         showCreditCardFilter,
-        creditCardId,
+        selectedCardCount,
         showDebtorFilter,
         debtorId,
     ]);
@@ -103,21 +106,26 @@ export default function FilterBar({
         selectedCategory?.name ?? 'Todas as categorias',
     ];
     if (showCreditCardFilter) {
-        summaryParts.push(selectedCard?.name ?? 'Todos os cartões');
+        summaryParts.push(
+            selectedCardCount === 0
+                ? 'Todos os cartões'
+                : selectedCardCount === 1
+                    ? (creditCards.find((c) => c.id === creditCardIds[0])?.name ?? '1 cartão')
+                    : `${selectedCardCount} cartões`,
+        );
     }
     if (showDebtorFilter) {
         summaryParts.push(selectedDebtor?.name ?? 'Todas as pessoas');
     }
 
     const creditCardSelect = showCreditCardFilter ? (
-        <FilterSelect
+        <CreditCardMultiFilter
             items={creditCards}
-            value={creditCardId}
+            value={creditCardIds}
+            includeUncarded={includeUncarded}
             loading={creditCardsLoading}
-            loadingLabel="Cartões…"
-            allLabel="Todos os cartões"
-            ariaLabel="Cartão"
-            onChange={onCreditCardChange}
+            onChange={onCreditCardIdsChange}
+            onIncludeUncardedChange={onIncludeUncardedChange}
         />
     ) : null;
 
@@ -185,10 +193,12 @@ export default function FilterBar({
                     from={from}
                     to={to}
                     cycleOffset={cycleOffset}
-                    hasCreditCard={hasCreditCard}
+                    expenseCycleDay={expenseCycleDay}
+                    incomeCycleDay={incomeCycleDay}
                     maxDays={maxDateRangeDays}
                     onPresetChange={onPeriodChange}
                     onCycleOffsetChange={onCycleOffsetChange}
+                    onCycleDaysChange={onCycleDaysChange}
                     onCustomRange={onCustomRange}
                     className="shrink-0 flex-nowrap"
                 />
@@ -243,10 +253,12 @@ export default function FilterBar({
                             from={from}
                             to={to}
                             cycleOffset={cycleOffset}
-                            hasCreditCard={hasCreditCard}
+                            expenseCycleDay={expenseCycleDay}
+                            incomeCycleDay={incomeCycleDay}
                             maxDays={maxDateRangeDays}
                             onPresetChange={onPeriodChange}
                             onCycleOffsetChange={onCycleOffsetChange}
+                            onCycleDaysChange={onCycleDaysChange}
                             onCustomRange={onCustomRange}
                             className="flex-wrap"
                         />

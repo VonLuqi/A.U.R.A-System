@@ -19,7 +19,7 @@ describe('dates §6.2', () => {
         expect(normalizePeriodPreset('LAST_30')).toBe('last_30');
         expect(normalizePeriodPreset('all')).toBe('all');
         expect(normalizePeriodPreset('my_cycle')).toBe('my_cycle');
-        expect(normalizePeriodPreset('card_cycle')).toBe('card_cycle');
+        expect(normalizePeriodPreset('card_cycle')).toBeNull();
         expect(normalizePeriodPreset('ytd')).toBeNull();
         expect(normalizePeriodPreset('')).toBeNull();
     });
@@ -70,7 +70,8 @@ describe('apiParams §6.2', () => {
             to: '2026-08-31',
             preset: 'custom',
             group_by: 'day',
-            credit_card_id: 3,
+            credit_card_ids: [3, 5],
+            include_uncarded: true,
             debtor_id: 7,
             q: '',
         })).toEqual({
@@ -78,7 +79,8 @@ describe('apiParams §6.2', () => {
             to: '2026-08-31',
             preset: 'custom',
             group_by: 'day',
-            credit_card_id: 3,
+            credit_card_ids: [3, 5],
+            include_uncarded: 1,
             debtor_id: 7,
         });
 
@@ -86,14 +88,15 @@ describe('apiParams §6.2', () => {
             from: '2026-08-01',
             to: '2026-08-31',
             preset: 'custom',
-            credit_card_id: 3,
+            credit_card_ids: [3],
+            include_uncarded: false,
             debtor_id: 7,
             page: 1,
         })).toEqual({
             from: '2026-08-01',
             to: '2026-08-31',
             preset: 'custom',
-            credit_card_id: 3,
+            credit_card_ids: [3],
             debtor_id: 7,
             page: 1,
         });

@@ -13,8 +13,9 @@ use Illuminate\Validation\Rule;
  * Query params for GET /api/transactions (Etapa C §5.4.1 / PLAN_EXPANSAO §6.1).
  *
  * from/to: required together, or both omitted → current month (compat with analytics).
- * preset: current_month|last_30|last_90|all|custom|my_cycle|card_cycle
- * (custom exige from/to; all omite datas; cycles recalculam; card_cycle exige credit_card_id).
+ * preset: current_month|last_30|last_90|all|custom|my_cycle
+ * (custom exige from/to; all omite datas; my_cycle recalcula).
+ * credit_card_ids + include_uncarded para multi-filtro de cartões.
  */
 class IndexTransactionsRequest extends FormRequest
 {
@@ -42,8 +43,10 @@ class IndexTransactionsRequest extends FormRequest
         $preset = DateRangeQuery::normalizePreset($this->input('preset'));
         $customRequiresDates = $preset === DateRangeQuery::PRESET_CUSTOM;
         $isAll = $preset === DateRangeQuery::PRESET_ALL;
-        $isCardCycle = $preset === DateRangeQuery::PRESET_CARD_CYCLE;
         $userId = $this->user()?->id;
+        $ownedCard = Rule::exists('credit_cards', 'id')->where(
+            fn ($query) => $userId !== null ? $query->where('user_id', $userId) : $query->whereRaw('0=1')
+        );
 
         return [
             'preset' => [
@@ -70,13 +73,10 @@ class IndexTransactionsRequest extends FormRequest
             ],
             'type' => ['nullable', 'string', Rule::in(['credit', 'debit'])],
             'category_id' => ['nullable', 'integer', 'exists:categories,id'],
-            'credit_card_id' => [
-                $isCardCycle ? 'required' : 'nullable',
-                'integer',
-                Rule::exists('credit_cards', 'id')->where(
-                    fn ($query) => $userId !== null ? $query->where('user_id', $userId) : $query->whereRaw('0=1')
-                ),
-            ],
+            'credit_card_id' => ['nullable', 'integer', $ownedCard],
+            'credit_card_ids' => ['nullable', 'array'],
+            'credit_card_ids.*' => ['integer', $ownedCard],
+            'include_uncarded' => ['nullable', 'boolean'],
             'loan_id' => ['nullable', 'integer', 'exists:loans,id'],
             'debtor_id' => ['nullable', 'integer', 'exists:debtors,id'],
             'has_loan' => ['nullable', 'boolean'],
@@ -102,15 +102,15 @@ class IndexTransactionsRequest extends FormRequest
             'to.after_or_equal' => 'A data final deve ser posterior ou igual à data inicial.',
             'type.in' => 'O tipo deve ser credit ou debit.',
             'category_id.exists' => 'Categoria inválida.',
-            'credit_card_id.required' => 'Selecione um cartão para o ciclo do cartão.',
             'credit_card_id.exists' => 'Cartão inválido.',
+            'credit_card_ids.*.exists' => 'Cartão inválido.',
             'statement_import_id.exists' => 'Importação inválida.',
             'per_page.max' => 'O máximo de itens por página é 100.',
             'sort.in' => 'Ordenação inválida. Use occurred_on, amount ou created_at.',
             'direction.in' => 'Direção inválida. Use asc ou desc.',
             'from.required_with' => 'Informe from e to juntos, ou omita ambos para o mês corrente.',
             'to.required_with' => 'Informe from e to juntos, ou omita ambos para o mês corrente.',
-            'preset.in' => 'preset inválido. Use current_month, last_30, last_90, all, custom, my_cycle ou card_cycle.',
+            'preset.in' => 'preset inválido. Use current_month, last_30, last_90, all, custom ou my_cycle.',
             'to' => 'O intervalo de datas excede o limite do seu perfil.',
         ];
     }
@@ -119,8 +119,9 @@ class IndexTransactionsRequest extends FormRequest
     {
         $this->normalizeEmptyDateRangeInputs([
             'type', 'category_id', 'credit_card_id', 'loan_id', 'debtor_id', 'has_loan', 'has_credit_card',
-            'q', 'statement_import_id', 'page', 'per_page', 'sort', 'direction',
+            'q', 'statement_import_id', 'page', 'per_page', 'sort', 'direction', 'include_uncarded',
         ]);
+        $this->normalizeCreditCardIdFilters();
         $this->applyDateRangePresetOrDefault();
     }
 
@@ -168,9 +169,39 @@ class IndexTransactionsRequest extends FormRequest
 
     public function creditCardId(): ?int
     {
+        $ids = $this->creditCardIds();
+        if (count($ids) === 1) {
+            return $ids[0];
+        }
+
         $value = $this->validated('credit_card_id');
 
         return $value !== null ? (int) $value : null;
+    }
+
+    /**
+     * @return list<int>
+     */
+    public function creditCardIds(): array
+    {
+        $ids = $this->validated('credit_card_ids') ?? [];
+
+        if (! is_array($ids) || $ids === []) {
+            $singular = $this->validated('credit_card_id');
+
+            return $singular !== null ? [(int) $singular] : [];
+        }
+
+        return array_values(array_unique(array_map('intval', $ids)));
+    }
+
+    public function includeUncarded(): bool
+    {
+        if (! $this->exists('include_uncarded') || $this->input('include_uncarded') === null) {
+            return false;
+        }
+
+        return $this->boolean('include_uncarded');
     }
 
     public function loanId(): ?int
@@ -242,6 +273,8 @@ class IndexTransactionsRequest extends FormRequest
      *     q: ?string,
      *     statement_import_id: ?int,
      *     credit_card_id: ?int,
+     *     credit_card_ids: list<int>,
+     *     include_uncarded: bool,
      *     loan_id: ?int,
      *     debtor_id: ?int,
      *     has_loan: ?bool,
@@ -254,6 +287,8 @@ class IndexTransactionsRequest extends FormRequest
      */
     public function filters(): array
     {
+        $ids = $this->creditCardIds();
+
         return [
             'from' => $this->fromDate(),
             'to' => $this->toDate(),
@@ -261,7 +296,9 @@ class IndexTransactionsRequest extends FormRequest
             'category_id' => $this->categoryId(),
             'q' => $this->search(),
             'statement_import_id' => $this->statementImportId(),
-            'credit_card_id' => $this->creditCardId(),
+            'credit_card_id' => count($ids) === 1 ? $ids[0] : null,
+            'credit_card_ids' => $ids,
+            'include_uncarded' => $this->includeUncarded(),
             'loan_id' => $this->loanId(),
             'debtor_id' => $this->debtorId(),
             'has_loan' => $this->hasLoan(),

@@ -21,6 +21,7 @@ import { useDashboardFilters } from '../hooks/useDashboardFilters';
 import { useDebtors } from '../hooks/useDebtors';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useCreateGoal } from '../hooks/useGoalMutations';
+import { useUpdateProfile } from '../hooks/useProfileMutations';
 import { useTransactions } from '../hooks/useTransactions';
 import { ABILITIES, can, featureEnabled } from '../lib/auth';
 import { maxDateRangeDaysFor } from '../lib/dates';
@@ -52,6 +53,7 @@ export default function DashboardPage() {
         per_page: 100,
         enabled: showLoans,
     });
+    const updateProfile = useUpdateProfile();
     const {
         filters,
         apiFilters,
@@ -60,7 +62,7 @@ export default function DashboardPage() {
         setCycleOffset,
         setCustomRange,
         setFilters,
-    } = useDashboardFilters({ creditCards: creditCards.data });
+    } = useDashboardFilters();
     const analytics = useDashboardAnalytics(apiFilters);
     const previewFilters = useMemo(
         () => ({
@@ -125,9 +127,14 @@ export default function DashboardPage() {
                 from={filters.from}
                 to={filters.to}
                 cycleOffset={filters.cycle_offset}
+                expenseCycleDay={user?.expense_cycle_day ?? 6}
+                incomeCycleDay={user?.income_cycle_day ?? 12}
                 maxDateRangeDays={maxDateRangeDays}
                 onPeriodChange={setPeriodPreset}
                 onCycleOffsetChange={setCycleOffset}
+                onCycleDaysChange={(days) => {
+                    void updateProfile.mutate(days);
+                }}
                 onCustomRange={setCustomRange}
                 type={filters.type}
                 onTypeChange={(type) => setFilters({ type })}
@@ -136,8 +143,10 @@ export default function DashboardPage() {
                 categories={categories.data}
                 categoriesLoading={categories.status === 'loading'}
                 showCreditCardFilter={showCreditCards}
-                creditCardId={filters.credit_card_id}
-                onCreditCardChange={(credit_card_id) => setFilters({ credit_card_id })}
+                creditCardIds={filters.credit_card_ids}
+                includeUncarded={filters.include_uncarded}
+                onCreditCardIdsChange={(credit_card_ids) => setFilters({ credit_card_ids })}
+                onIncludeUncardedChange={(include_uncarded) => setFilters({ include_uncarded })}
                 creditCards={creditCards.data}
                 creditCardsLoading={creditCards.status === 'loading'}
                 showDebtorFilter={showLoans}

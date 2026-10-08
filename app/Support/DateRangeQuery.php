@@ -24,8 +24,6 @@ final class DateRangeQuery
 
     public const PRESET_MY_CYCLE = 'my_cycle';
 
-    public const PRESET_CARD_CYCLE = 'card_cycle';
-
     /** Inclusive day span at or below this → series group_by=day. */
     public const GROUP_BY_DAY_MAX_DAYS = 45;
 
@@ -41,7 +39,6 @@ final class DateRangeQuery
         self::PRESET_ALL,
         self::PRESET_CUSTOM,
         self::PRESET_MY_CYCLE,
-        self::PRESET_CARD_CYCLE,
     ];
 
     /** Named presets that compute from/to without extra context (not custom / all / cycles). */
@@ -56,7 +53,6 @@ final class DateRangeQuery
     /** @var list<string> */
     public const CYCLE_PRESETS = [
         self::PRESET_MY_CYCLE,
-        self::PRESET_CARD_CYCLE,
     ];
 
     /**
@@ -122,8 +118,8 @@ final class DateRangeQuery
     }
 
     /**
-     * Day for my_cycle / card_cycle given transaction type filter.
-     * credit → income/due day; debit or empty → expense/closing day.
+     * Day for my_cycle given transaction type filter.
+     * credit → income day; debit or empty → expense day.
      */
     public static function cycleDayForType(?string $type, int $expenseOrClosingDay, int $incomeOrDueDay): int
     {

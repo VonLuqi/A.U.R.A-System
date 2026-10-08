@@ -3,11 +3,11 @@
  *
  * Contrato API (query string compartilhado com analytics + transactions):
  * - `from` / `to`: ISO `YYYY-MM-DD` (juntos; omitidos → mês corrente no backend)
- * - `preset`: `current_month` | `last_30` | `last_90` | `all` | `custom` | `my_cycle` | `card_cycle`
+ * - `preset`: `current_month` | `last_30` | `last_90` | `all` | `custom` | `my_cycle`
  *   - named: backend recalcula bounds; frontend grava `from`+`to`+`preset` na URL
  *   - `all`: sem from/to (histórico completo; só papéis com intervalo ilimitado)
  *   - `custom`: exige `from`+`to` (ex.: `?from=2026-08-01&to=2026-08-31&preset=custom`)
- *   - cycles: `cycle_offset` + dia (prefs / cartão) + `type`
+ *   - `my_cycle`: `cycle_offset` + dias de perfil + `type`
  * - `group_by` (só analytics): `day` | `month`; omitido → ≤45 dias inclusivos → `day`; all → month
  */
 
@@ -74,7 +74,7 @@ export function resolveGroupBy(from, to) {
     return daysBetween(from, to) <= 45 ? 'day' : 'month';
 }
 
-/** @typedef {'current_month'|'last_30'|'last_90'|'all'|'custom'|'my_cycle'|'card_cycle'} PeriodPresetId */
+/** @typedef {'current_month'|'last_30'|'last_90'|'all'|'custom'|'my_cycle'} PeriodPresetId */
 
 export const PERIOD_PRESET_IDS = {
     current_month: 'current_month',
@@ -83,10 +83,9 @@ export const PERIOD_PRESET_IDS = {
     all: 'all',
     custom: 'custom',
     my_cycle: 'my_cycle',
-    card_cycle: 'card_cycle',
 };
 
-/** @type {Record<Exclude<PeriodPresetId, 'custom'|'my_cycle'|'card_cycle'>, () => { from: string, to: string }>} */
+/** @type {Record<Exclude<PeriodPresetId, 'custom'|'my_cycle'>, () => { from: string, to: string }>} */
 export const PERIOD_PRESETS = {
     current_month: () => currentMonthRange(),
     last_30: () => lastNDaysRange(30),
@@ -101,7 +100,6 @@ export const PERIOD_PRESET_LABELS = {
     all: 'Todo o histórico',
     custom: 'Personalizado',
     my_cycle: 'Meu ciclo',
-    card_cycle: 'Ciclo do cartão',
 };
 
 /**
@@ -109,7 +107,7 @@ export const PERIOD_PRESET_LABELS = {
  * @returns {boolean}
  */
 export function isCyclePreset(preset) {
-    return preset === PERIOD_PRESET_IDS.my_cycle || preset === PERIOD_PRESET_IDS.card_cycle;
+    return preset === PERIOD_PRESET_IDS.my_cycle;
 }
 
 /**
@@ -176,7 +174,6 @@ export function cycleDayForType(type, expenseOrClosingDay, incomeOrDueDay) {
  *   type?: ''|'credit'|'debit'|null,
  *   cycleOffset?: number,
  *   user?: { expense_cycle_day?: number|null, income_cycle_day?: number|null }|null,
- *   creditCard?: { closing_day?: number, due_day?: number }|null,
  *   now?: Date,
  * }} args
  * @returns {{ from: string, to: string }|null}
@@ -186,34 +183,19 @@ export function resolveCycleRange({
     type = '',
     cycleOffset = 0,
     user = null,
-    creditCard = null,
     now = new Date(),
 }) {
-    if (preset === PERIOD_PRESET_IDS.my_cycle) {
-        const day = cycleDayForType(
-            type,
-            user?.expense_cycle_day ?? DEFAULT_EXPENSE_CYCLE_DAY,
-            user?.income_cycle_day ?? DEFAULT_INCOME_CYCLE_DAY,
-        );
-
-        return cycleDayRange(day, cycleOffset, now);
+    if (preset !== PERIOD_PRESET_IDS.my_cycle) {
+        return null;
     }
 
-    if (preset === PERIOD_PRESET_IDS.card_cycle) {
-        if (!creditCard) {
-            return null;
-        }
+    const day = cycleDayForType(
+        type,
+        user?.expense_cycle_day ?? DEFAULT_EXPENSE_CYCLE_DAY,
+        user?.income_cycle_day ?? DEFAULT_INCOME_CYCLE_DAY,
+    );
 
-        const day = cycleDayForType(
-            type,
-            creditCard.closing_day ?? DEFAULT_EXPENSE_CYCLE_DAY,
-            creditCard.due_day ?? DEFAULT_INCOME_CYCLE_DAY,
-        );
-
-        return cycleDayRange(day, cycleOffset, now);
-    }
-
-    return null;
+    return cycleDayRange(day, cycleOffset, now);
 }
 
 /**

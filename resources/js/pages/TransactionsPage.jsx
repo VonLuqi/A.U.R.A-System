@@ -17,6 +17,7 @@ import { useCreditCards } from '../hooks/useCreditCards';
 import { useDashboardFilters } from '../hooks/useDashboardFilters';
 import { useDebtors } from '../hooks/useDebtors';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
+import { useUpdateProfile } from '../hooks/useProfileMutations';
 import {
     useCreateTransaction,
     useDeleteTransaction,
@@ -60,6 +61,7 @@ export default function TransactionsPage() {
         per_page: 100,
         enabled: showLoans,
     });
+    const updateProfile = useUpdateProfile();
     const {
         filters,
         apiFilters,
@@ -69,7 +71,7 @@ export default function TransactionsPage() {
         setCustomRange,
         setFilters,
         setPage,
-    } = useDashboardFilters({ creditCards: creditCards.data });
+    } = useDashboardFilters();
     const transactions = useTransactions(apiFilters);
 
     const [formState, setFormState] = useState(null);
@@ -125,7 +127,7 @@ export default function TransactionsPage() {
     const hasTypeOrCategoryFilter = Boolean(
         filters.type ||
             filters.category_id ||
-            filters.credit_card_id ||
+            (filters.credit_card_ids?.length ?? 0) > 0 ||
             filters.debtor_id,
     );
     const looksEmptyAccount =
@@ -193,9 +195,14 @@ export default function TransactionsPage() {
                         from={filters.from}
                         to={filters.to}
                         cycleOffset={filters.cycle_offset}
+                        expenseCycleDay={user?.expense_cycle_day ?? 6}
+                        incomeCycleDay={user?.income_cycle_day ?? 12}
                         maxDateRangeDays={maxDateRangeDays}
                         onPeriodChange={setPeriodPreset}
                         onCycleOffsetChange={setCycleOffset}
+                        onCycleDaysChange={(days) => {
+                            void updateProfile.mutate(days);
+                        }}
                         onCustomRange={setCustomRange}
                         type={filters.type}
                         onTypeChange={(type) => setFilters({ type })}
@@ -204,9 +211,13 @@ export default function TransactionsPage() {
                         categories={categories.data}
                         categoriesLoading={categories.status === 'loading'}
                         showCreditCardFilter={showCreditCards}
-                        creditCardId={filters.credit_card_id}
-                        onCreditCardChange={(credit_card_id) =>
-                            setFilters({ credit_card_id })
+                        creditCardIds={filters.credit_card_ids}
+                        includeUncarded={filters.include_uncarded}
+                        onCreditCardIdsChange={(credit_card_ids) =>
+                            setFilters({ credit_card_ids })
+                        }
+                        onIncludeUncardedChange={(include_uncarded) =>
+                            setFilters({ include_uncarded })
                         }
                         creditCards={creditCards.data}
                         creditCardsLoading={creditCards.status === 'loading'}

@@ -26,7 +26,8 @@ const Q_DEBOUNCE_MS = 300;
  * @property {number} cycle_offset
  * @property {''|'credit'|'debit'} type
  * @property {number|''} category_id
- * @property {number|''} credit_card_id
+ * @property {number[]} credit_card_ids
+ * @property {boolean} include_uncarded
  * @property {number|''} debtor_id
  * @property {string} q
  * @property {'day'|'month'} group_by
@@ -108,10 +109,16 @@ function parseFiltersFromParams(params) {
     const type = typeRaw === 'credit' || typeRaw === 'debit' ? typeRaw : '';
     const categoryRaw = params.get('category_id') || '';
     const category_id = categoryRaw && /^\d+$/.test(categoryRaw) ? Number(categoryRaw) : '';
-    const creditCardRaw = params.get('credit_card_id') || '';
-    const credit_card_id = creditCardRaw && /^\d+$/.test(creditCardRaw)
-        ? Number(creditCardRaw)
-        : '';
+    const creditCardsRaw = params.get('credit_card_ids') || params.get('credit_card_id') || '';
+    const credit_card_ids = creditCardsRaw
+        ? creditCardsRaw
+            .split(',')
+            .map((part) => part.trim())
+            .filter((part) => /^\d+$/.test(part))
+            .map((part) => Number(part))
+        : [];
+    const include_uncarded = params.get('include_uncarded') === '1'
+        || params.get('include_uncarded') === 'true';
     const debtorRaw = params.get('debtor_id') || '';
     const debtor_id = debtorRaw && /^\d+$/.test(debtorRaw) ? Number(debtorRaw) : '';
     const q = params.get('q') || '';
@@ -131,7 +138,8 @@ function parseFiltersFromParams(params) {
         cycle_offset: isCyclePreset(preset) ? cycle_offset : 0,
         type,
         category_id,
-        credit_card_id,
+        credit_card_ids,
+        include_uncarded: credit_card_ids.length > 0 ? include_uncarded : false,
         debtor_id,
         q,
         group_by: resolveGroupBy(from, to),
@@ -174,8 +182,12 @@ function filtersToSearchParams(filters) {
         params.set('category_id', String(filters.category_id));
     }
 
-    if (filters.credit_card_id !== '' && filters.credit_card_id != null) {
-        params.set('credit_card_id', String(filters.credit_card_id));
+    if (Array.isArray(filters.credit_card_ids) && filters.credit_card_ids.length > 0) {
+        params.set('credit_card_ids', filters.credit_card_ids.join(','));
+    }
+
+    if (filters.include_uncarded && Array.isArray(filters.credit_card_ids) && filters.credit_card_ids.length > 0) {
+        params.set('include_uncarded', '1');
     }
 
     if (filters.debtor_id !== '' && filters.debtor_id != null) {
@@ -203,21 +215,19 @@ function filtersToSearchParams(filters) {
 
 /**
  * @param {DashboardFilters} filters
- * @param {{ user?: object|null, creditCards?: Array<{ id: number, closing_day?: number, due_day?: number }> }} ctx
+ * @param {{ user?: object|null }} ctx
  * @returns {DashboardFilters}
  */
-function withResolvedCycleBounds(filters, { user, creditCards = [] }) {
+function withResolvedCycleBounds(filters, { user }) {
     if (!isCyclePreset(filters.preset)) {
         return filters;
     }
 
-    const creditCard = creditCards.find((card) => card.id === filters.credit_card_id) ?? null;
     const range = resolveCycleRange({
         preset: filters.preset,
         type: filters.type,
         cycleOffset: filters.cycle_offset ?? 0,
         user,
-        creditCard,
     });
 
     if (!range) {
@@ -233,19 +243,17 @@ function withResolvedCycleBounds(filters, { user, creditCards = [] }) {
 }
 
 /**
- * Dashboard filters — Etapa D §4.2 / PLAN_EXPANSAO §6.2 + ciclos.
- *
- * @param {{ creditCards?: Array<{ id: number, closing_day?: number, due_day?: number }> }} [options]
+ * Dashboard filters — Etapa D §4.2 / PLAN_EXPANSAO §6.2 + Meu ciclo.
  */
-export function useDashboardFilters({ creditCards = [] } = {}) {
+export function useDashboardFilters() {
     const { user } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
 
     const filters = useMemo(() => {
         const parsed = parseFiltersFromParams(searchParams);
 
-        return withResolvedCycleBounds(parsed, { user, creditCards });
-    }, [searchParams, user, creditCards]);
+        return withResolvedCycleBounds(parsed, { user });
+    }, [searchParams, user]);
 
     const [debouncedQ, setDebouncedQ] = useState(filters.q);
 
@@ -290,7 +298,7 @@ export function useDashboardFilters({ creditCards = [] } = {}) {
                 if (!('cycle_offset' in next) && !isCyclePreset(filters.preset)) {
                     merged.cycle_offset = 0;
                 }
-                merged = withResolvedCycleBounds(merged, { user, creditCards });
+                merged = withResolvedCycleBounds(merged, { user });
             } else {
                 merged.cycle_offset = 0;
                 if (!('from' in next) && !('to' in next) && PERIOD_PRESETS[preset]) {
@@ -303,11 +311,16 @@ export function useDashboardFilters({ creditCards = [] } = {}) {
                 }
             }
 
+            if (!Array.isArray(merged.credit_card_ids) || merged.credit_card_ids.length === 0) {
+                merged.credit_card_ids = [];
+                merged.include_uncarded = false;
+            }
+
             merged.group_by = resolveGroupBy(merged.from, merged.to);
 
             setSearchParams(filtersToSearchParams(merged), { replace: true });
         },
-        [filters, setSearchParams, user, creditCards],
+        [filters, setSearchParams, user],
     );
 
     const setFilters = useCallback(
@@ -318,10 +331,10 @@ export function useDashboardFilters({ creditCards = [] } = {}) {
                 next.page = 1;
             }
 
-            // Changing type / card while on a cycle preset recalculates bounds.
+            // Changing type while on Meu ciclo recalculates bounds.
             if (
                 isCyclePreset(filters.preset)
-                && (('type' in patch) || ('credit_card_id' in patch))
+                && ('type' in patch)
                 && !('preset' in patch)
             ) {
                 next.preset = filters.preset;

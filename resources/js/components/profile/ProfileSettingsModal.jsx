@@ -363,7 +363,7 @@ export default function ProfileSettingsModal({ open, onClose }) {
                             </p>
                         ) : (
                             <p className="text-caption text-ink-muted">
-                                Usado em Saídas / Todos (ex.: 6).
+                                Meu ciclo em Saídas / Todos (também no filtro).
                             </p>
                         )}
                     </div>
@@ -388,7 +388,7 @@ export default function ProfileSettingsModal({ open, onClose }) {
                             </p>
                         ) : (
                             <p className="text-caption text-ink-muted">
-                                Usado em Entradas (ex.: 12).
+                                Meu ciclo em Entradas (também no filtro).
                             </p>
                         )}
                     </div>

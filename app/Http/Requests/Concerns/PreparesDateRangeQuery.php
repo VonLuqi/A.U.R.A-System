@@ -2,7 +2,6 @@
 
 namespace App\Http\Requests\Concerns;
 
-use App\Models\CreditCard;
 use App\Support\DateRangeQuery;
 
 /**
@@ -30,9 +29,37 @@ trait PreparesDateRangeQuery
     }
 
     /**
+     * Normalize credit_card_ids (array or comma string) + legacy credit_card_id.
+     */
+    protected function normalizeCreditCardIdFilters(): void
+    {
+        $ids = $this->input('credit_card_ids');
+
+        if (is_string($ids)) {
+            $parsed = [];
+            foreach (explode(',', $ids) as $part) {
+                $part = trim($part);
+                if ($part !== '' && ctype_digit($part)) {
+                    $parsed[] = (int) $part;
+                }
+            }
+            $this->merge(['credit_card_ids' => array_values(array_unique($parsed))]);
+            $ids = $this->input('credit_card_ids');
+        }
+
+        if ((! is_array($ids) || $ids === []) && $this->filled('credit_card_id')) {
+            $this->merge(['credit_card_ids' => [(int) $this->input('credit_card_id')]]);
+        }
+
+        if ($this->exists('include_uncarded') && $this->input('include_uncarded') === '') {
+            $this->merge(['include_uncarded' => null]);
+        }
+    }
+
+    /**
      * Apply preset bounds or default to current month when both dates omitted.
      * Named presets overwrite from/to. all clears dates. custom leaves dates for validation.
-     * Cycle presets resolve day from user prefs or selected credit card + type.
+     * my_cycle resolves day from user prefs + type.
      */
     protected function applyDateRangePresetOrDefault(): void
     {
@@ -49,24 +76,16 @@ trait PreparesDateRangeQuery
             return;
         }
 
-        if (DateRangeQuery::isCyclePreset($preset)) {
+        if ($preset === DateRangeQuery::PRESET_MY_CYCLE) {
             $offset = $this->normalizedCycleOffset();
-            $day = $this->resolveCycleDay($preset);
-
-            if ($day !== null) {
-                $bounds = DateRangeQuery::cycleDayBounds($day, $offset);
-                $this->merge([
-                    'from' => $bounds[0],
-                    'to' => $bounds[1],
-                    'preset' => $preset,
-                    'cycle_offset' => $offset,
-                ]);
-            } else {
-                $this->merge([
-                    'preset' => $preset,
-                    'cycle_offset' => $offset,
-                ]);
-            }
+            $day = $this->resolveMyCycleDay();
+            $bounds = DateRangeQuery::cycleDayBounds($day, $offset);
+            $this->merge([
+                'from' => $bounds[0],
+                'to' => $bounds[1],
+                'preset' => $preset,
+                'cycle_offset' => $offset,
+            ]);
 
             return;
         }
@@ -113,52 +132,25 @@ trait PreparesDateRangeQuery
         return max(-120, min(120, (int) $this->input('cycle_offset')));
     }
 
-    /**
-     * @return int|null Null when card_cycle cannot resolve (missing/foreign card).
-     */
-    protected function resolveCycleDay(string $preset): ?int
+    protected function resolveMyCycleDay(): int
     {
         $type = $this->input('type');
         $type = is_string($type) && $type !== '' ? $type : null;
+        $user = $this->user();
 
-        if ($preset === DateRangeQuery::PRESET_MY_CYCLE) {
-            $user = $this->user();
-            if ($user === null) {
-                return DateRangeQuery::DEFAULT_EXPENSE_CYCLE_DAY;
-            }
-
+        if ($user === null) {
             return DateRangeQuery::cycleDayForType(
                 $type,
-                $user->expenseCycleDay(),
-                $user->incomeCycleDay(),
+                DateRangeQuery::DEFAULT_EXPENSE_CYCLE_DAY,
+                DateRangeQuery::DEFAULT_INCOME_CYCLE_DAY,
             );
         }
 
-        if ($preset === DateRangeQuery::PRESET_CARD_CYCLE) {
-            $user = $this->user();
-            $cardId = $this->input('credit_card_id');
-
-            if ($user === null || $cardId === null || $cardId === '') {
-                return null;
-            }
-
-            $card = CreditCard::query()
-                ->where('user_id', $user->id)
-                ->whereKey((int) $cardId)
-                ->first(['id', 'closing_day', 'due_day']);
-
-            if ($card === null) {
-                return null;
-            }
-
-            return DateRangeQuery::cycleDayForType(
-                $type,
-                (int) $card->closing_day,
-                (int) $card->due_day,
-            );
-        }
-
-        return null;
+        return DateRangeQuery::cycleDayForType(
+            $type,
+            $user->expenseCycleDay(),
+            $user->incomeCycleDay(),
+        );
     }
 
     /**

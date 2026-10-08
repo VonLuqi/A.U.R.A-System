@@ -16,6 +16,8 @@ use Illuminate\Database\Eloquent\Builder;
  *     q?: ?string,
  *     statement_import_id?: ?int,
  *     credit_card_id?: ?int,
+ *     credit_card_ids?: list<int>|null,
+ *     include_uncarded?: bool|null,
  *     loan_id?: ?int,
  *     debtor_id?: ?int,
  *     has_loan?: bool|null,
@@ -68,9 +70,22 @@ trait AppliesTransactionFilters
             $query->where('transactions.statement_import_id', (int) $importId);
         }
 
-        $creditCardId = $filters['credit_card_id'] ?? null;
-        if ($creditCardId !== null) {
-            $query->where('transactions.credit_card_id', (int) $creditCardId);
+        $creditCardIds = $filters['credit_card_ids'] ?? null;
+        if (is_array($creditCardIds) && $creditCardIds !== []) {
+            $ids = array_values(array_unique(array_map('intval', $creditCardIds)));
+            $includeUncarded = (bool) ($filters['include_uncarded'] ?? false);
+
+            $query->where(function (Builder $cardQuery) use ($ids, $includeUncarded): void {
+                $cardQuery->whereIn('transactions.credit_card_id', $ids);
+                if ($includeUncarded) {
+                    $cardQuery->orWhereNull('transactions.credit_card_id');
+                }
+            });
+        } else {
+            $creditCardId = $filters['credit_card_id'] ?? null;
+            if ($creditCardId !== null) {
+                $query->where('transactions.credit_card_id', (int) $creditCardId);
+            }
         }
 
         $loanId = $filters['loan_id'] ?? null;

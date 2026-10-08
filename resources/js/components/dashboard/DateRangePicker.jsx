@@ -27,7 +27,6 @@ const NAMED_OPTIONS = [
     { id: PERIOD_PRESET_IDS.last_30, label: '30 dias' },
     { id: PERIOD_PRESET_IDS.last_90, label: '90 dias' },
     { id: PERIOD_PRESET_IDS.my_cycle, label: 'Meu ciclo' },
-    { id: PERIOD_PRESET_IDS.card_cycle, label: 'Ciclo do cartão' },
     { id: PERIOD_PRESET_IDS.all, label: 'Todo o histórico' },
 ];
 
@@ -44,10 +43,12 @@ const POPOVER_WIDTH_PX = 352;
  *   from: string,
  *   to: string,
  *   cycleOffset?: number,
- *   hasCreditCard?: boolean,
+ *   expenseCycleDay?: number,
+ *   incomeCycleDay?: number,
  *   maxDays?: number|null,
  *   onPresetChange: (presetId: string) => void,
  *   onCycleOffsetChange?: (offset: number) => void,
+ *   onCycleDaysChange?: (days: { expense_cycle_day: number, income_cycle_day: number }) => void,
  *   onCustomRange: (range: { from: string, to: string }) => void,
  *   className?: string,
  * }} props
@@ -57,10 +58,12 @@ export default function DateRangePicker({
     from,
     to,
     cycleOffset = 0,
-    hasCreditCard = false,
+    expenseCycleDay = 6,
+    incomeCycleDay = 12,
     maxDays = null,
     onPresetChange,
     onCycleOffsetChange,
+    onCycleDaysChange,
     onCustomRange,
     className = '',
 }) {
@@ -78,10 +81,37 @@ export default function DateRangePicker({
 
     const isCustom = preset === PERIOD_PRESET_IDS.custom;
     const cycleActive = isCyclePreset(preset);
+    const [draftExpenseDay, setDraftExpenseDay] = useState(String(expenseCycleDay));
+    const [draftIncomeDay, setDraftIncomeDay] = useState(String(incomeCycleDay));
     const limitTitle =
         maxDays != null
             ? `Máximo de ${maxDays} dias para o seu perfil`
             : undefined;
+
+    useEffect(() => {
+        setDraftExpenseDay(String(expenseCycleDay));
+        setDraftIncomeDay(String(incomeCycleDay));
+    }, [expenseCycleDay, incomeCycleDay]);
+
+    function commitCycleDays(nextExpense, nextIncome) {
+        if (!onCycleDaysChange) {
+            return;
+        }
+
+        const expense = Math.max(1, Math.min(31, Number.parseInt(String(nextExpense), 10) || 1));
+        const income = Math.max(1, Math.min(31, Number.parseInt(String(nextIncome), 10) || 1));
+        setDraftExpenseDay(String(expense));
+        setDraftIncomeDay(String(income));
+
+        if (expense === expenseCycleDay && income === incomeCycleDay) {
+            return;
+        }
+
+        onCycleDaysChange({
+            expense_cycle_day: expense,
+            income_cycle_day: income,
+        });
+    }
 
     useLayoutEffect(() => {
         if (!open) {
@@ -166,11 +196,6 @@ export default function DateRangePicker({
 
             setOpen(false);
             onPresetChange(presetId);
-            return;
-        }
-
-        if (presetId === PERIOD_PRESET_IDS.card_cycle && !hasCreditCard) {
-            toast.error('Selecione um cartão.', { duration: TOAST_DURATION });
             return;
         }
 
@@ -399,22 +424,14 @@ export default function DateRangePicker({
                     && option.id !== PERIOD_PRESET_IDS.all
                     && maxDays != null
                     && !isWithinDateRangeLimit(range.from, range.to, maxDays);
-                const cardBlocked =
-                    option.id === PERIOD_PRESET_IDS.card_cycle && !hasCreditCard;
 
                 return (
                     <Pill
                         key={option.id}
                         active={preset === option.id}
-                        title={
-                            cardBlocked
-                                ? 'Selecione um cartão'
-                                : exceeds
-                                    ? limitTitle
-                                    : undefined
-                        }
-                        aria-disabled={exceeds || cardBlocked || undefined}
-                        className={exceeds || cardBlocked ? 'opacity-60' : undefined}
+                        title={exceeds ? limitTitle : undefined}
+                        aria-disabled={exceeds || undefined}
+                        className={exceeds ? 'opacity-60' : undefined}
                         onClick={() => handleNamedPreset(option.id)}
                     >
                         {option.label}
@@ -463,6 +480,53 @@ export default function DateRangePicker({
                     >
                         <ChevronRight size={16} strokeWidth={1.75} aria-hidden />
                     </button>
+                </div>
+            ) : null}
+
+            {cycleActive && onCycleDaysChange ? (
+                <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Dias do ciclo">
+                    <label className="flex items-center gap-1.5 text-caption text-ink-secondary">
+                        <span className="shrink-0">Saídas</span>
+                        <input
+                            type="number"
+                            min={1}
+                            max={31}
+                            value={draftExpenseDay}
+                            aria-label="Dia do ciclo de saídas"
+                            className={cx(
+                                'h-9 w-14 rounded-lg border border-border bg-surface-sunken px-2 text-body text-ink',
+                                'outline-none focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand',
+                            )}
+                            onChange={(event) => setDraftExpenseDay(event.target.value)}
+                            onBlur={() => commitCycleDays(draftExpenseDay, draftIncomeDay)}
+                            onKeyDown={(event) => {
+                                if (event.key === 'Enter') {
+                                    event.currentTarget.blur();
+                                }
+                            }}
+                        />
+                    </label>
+                    <label className="flex items-center gap-1.5 text-caption text-ink-secondary">
+                        <span className="shrink-0">Entradas</span>
+                        <input
+                            type="number"
+                            min={1}
+                            max={31}
+                            value={draftIncomeDay}
+                            aria-label="Dia do ciclo de entradas"
+                            className={cx(
+                                'h-9 w-14 rounded-lg border border-border bg-surface-sunken px-2 text-body text-ink',
+                                'outline-none focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand',
+                            )}
+                            onChange={(event) => setDraftIncomeDay(event.target.value)}
+                            onBlur={() => commitCycleDays(draftExpenseDay, draftIncomeDay)}
+                            onKeyDown={(event) => {
+                                if (event.key === 'Enter') {
+                                    event.currentTarget.blur();
+                                }
+                            }}
+                        />
+                    </label>
                 </div>
             ) : null}
 

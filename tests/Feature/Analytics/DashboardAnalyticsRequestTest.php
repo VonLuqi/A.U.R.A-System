@@ -208,45 +208,30 @@ class DashboardAnalyticsRequestTest extends TestCase
         }
     }
 
-    public function test_preset_card_cycle_requires_own_card_and_uses_closing_or_due(): void
+    public function test_credit_card_ids_and_include_uncarded_are_accepted(): void
     {
-        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-07 12:00:00', 'America/Sao_Paulo'));
-        config(['app.timezone' => 'America/Sao_Paulo']);
-
         $user = User::factory()->admin()->create();
-        $card = CreditCard::factory()->create([
-            'user_id' => $user->id,
-            'closing_day' => 6,
-            'due_day' => 12,
-        ]);
+        $cardA = CreditCard::factory()->create(['user_id' => $user->id]);
+        $cardB = CreditCard::factory()->create(['user_id' => $user->id]);
+        $foreign = CreditCard::factory()->create();
 
-        try {
-            $this->actingAs($user)
-                ->getJson('/api/analytics/dashboard?preset=card_cycle')
-                ->assertUnprocessable()
-                ->assertJsonValidationErrors(['credit_card_id']);
+        $this->actingAs($user)
+            ->getJson('/api/analytics/dashboard?'.http_build_query([
+                'credit_card_ids' => [$cardA->id, $cardB->id],
+                'include_uncarded' => 1,
+            ]))
+            ->assertOk()
+            ->assertJsonPath('data.filters.credit_card_ids', [$cardA->id, $cardB->id])
+            ->assertJsonPath('data.filters.include_uncarded', true);
 
-            $this->actingAs($user)
-                ->getJson('/api/analytics/dashboard?'.http_build_query([
-                    'preset' => 'card_cycle',
-                    'credit_card_id' => $card->id,
-                    'type' => 'debit',
-                ]))
-                ->assertOk()
-                ->assertJsonPath('data.filters.from', '2026-10-06')
-                ->assertJsonPath('data.filters.to', '2026-11-06');
+        $this->actingAs($user)
+            ->getJson('/api/analytics/dashboard?credit_card_ids='.$foreign->id)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['credit_card_ids.0']);
 
-            $this->actingAs($user)
-                ->getJson('/api/analytics/dashboard?'.http_build_query([
-                    'preset' => 'card_cycle',
-                    'credit_card_id' => $card->id,
-                    'type' => 'credit',
-                ]))
-                ->assertOk()
-                ->assertJsonPath('data.filters.from', '2026-09-12')
-                ->assertJsonPath('data.filters.to', '2026-10-12');
-        } finally {
-            CarbonImmutable::setTestNow();
-        }
+        $this->actingAs($user)
+            ->getJson('/api/analytics/dashboard?preset=card_cycle')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['preset']);
     }
 }

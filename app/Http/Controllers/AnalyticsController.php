@@ -26,6 +26,8 @@ class AnalyticsController extends Controller
                     'type' => $filters['type'],
                     'category_id' => $filters['category_id'],
                     'credit_card_id' => $filters['credit_card_id'],
+                    'credit_card_ids' => $filters['credit_card_ids'],
+                    'include_uncarded' => $filters['include_uncarded'],
                     'debtor_id' => $filters['debtor_id'],
                     'q' => $filters['q'],
                     'group_by' => $filters['group_by'],
