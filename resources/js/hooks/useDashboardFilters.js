@@ -170,7 +170,7 @@ function filtersToSearchParams(filters) {
         params.set('preset', filters.preset);
     }
 
-    if (isCyclePreset(filters.preset) && filters.cycle_offset) {
+    if (isCyclePreset(filters.preset) && filters.cycle_offset !== 0) {
         params.set('cycle_offset', String(filters.cycle_offset));
     }
 

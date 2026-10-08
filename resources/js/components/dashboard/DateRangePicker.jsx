@@ -439,47 +439,59 @@ export default function DateRangePicker({
                 );
             })}
 
-            <Pill
-                ref={customBtnRef}
-                active={isCustom || open}
-                title={limitTitle}
-                aria-haspopup="dialog"
-                aria-expanded={open}
-                aria-controls={open ? popoverId : undefined}
-                onClick={handleCustomToggle}
-                className="max-w-[14rem] gap-1.5"
-            >
-                <CalendarRange size={14} strokeWidth={1.75} aria-hidden className="shrink-0" />
-                <span className="truncate">{customLabel}</span>
-            </Pill>
-
             {cycleActive && onCycleOffsetChange ? (
-                <div className="flex items-center gap-1" role="group" aria-label="Navegar ciclo">
+                <div
+                    className="flex items-center gap-0.5 rounded-full border border-border-subtle bg-surface-sunken/60 px-0.5"
+                    role="group"
+                    aria-label="Navegar entre ciclos"
+                >
                     <button
                         type="button"
                         className={cx(
                             'inline-flex h-9 w-9 items-center justify-center rounded-full text-ink-secondary transition',
                             'hover:bg-surface-raised hover:text-ink',
                             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
+                            'disabled:cursor-not-allowed disabled:opacity-40',
                         )}
                         aria-label="Ciclo anterior"
+                        disabled={cycleOffset <= -120}
                         onClick={() => onCycleOffsetChange(cycleOffset - 1)}
                     >
                         <ChevronLeft size={16} strokeWidth={1.75} aria-hidden />
                     </button>
+                    <span
+                        className="min-w-[9.5rem] px-1 text-center text-caption font-medium tabular-nums text-ink"
+                        title="Intervalo do ciclo selecionado"
+                    >
+                        {from && to ? formatRangeLabel(from, to) : '—'}
+                    </span>
                     <button
                         type="button"
                         className={cx(
                             'inline-flex h-9 w-9 items-center justify-center rounded-full text-ink-secondary transition',
                             'hover:bg-surface-raised hover:text-ink',
                             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
+                            'disabled:cursor-not-allowed disabled:opacity-40',
                         )}
                         aria-label="Próximo ciclo"
-                        disabled={cycleOffset >= 0}
-                        onClick={() => onCycleOffsetChange(Math.min(0, cycleOffset + 1))}
+                        disabled={cycleOffset >= 120}
+                        onClick={() => onCycleOffsetChange(cycleOffset + 1)}
                     >
                         <ChevronRight size={16} strokeWidth={1.75} aria-hidden />
                     </button>
+                    {cycleOffset !== 0 ? (
+                        <button
+                            type="button"
+                            className={cx(
+                                'mr-1 h-8 shrink-0 rounded-full px-2.5 text-caption font-medium text-ink-secondary transition',
+                                'hover:bg-surface-raised hover:text-ink',
+                                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
+                            )}
+                            onClick={() => onCycleOffsetChange(0)}
+                        >
+                            Atual
+                        </button>
+                    ) : null}
                 </div>
             ) : null}
 
@@ -529,6 +541,20 @@ export default function DateRangePicker({
                     </label>
                 </div>
             ) : null}
+
+            <Pill
+                ref={customBtnRef}
+                active={isCustom || open}
+                title={limitTitle}
+                aria-haspopup="dialog"
+                aria-expanded={open}
+                aria-controls={open ? popoverId : undefined}
+                onClick={handleCustomToggle}
+                className="max-w-[14rem] gap-1.5"
+            >
+                <CalendarRange size={14} strokeWidth={1.75} aria-hidden className="shrink-0" />
+                <span className="truncate">{customLabel}</span>
+            </Pill>
 
             {popover}
         </div>
